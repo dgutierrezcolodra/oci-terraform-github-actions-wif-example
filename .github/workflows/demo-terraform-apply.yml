@@ -1,0 +1,83 @@
+name: Demo Terraform Apply (Standard)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Terraform action to perform"
+        required: true
+        default: "plan"
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+      compartment_id:
+        description: "Compartment OCID (optional, uses secret if not provided)"
+        required: false
+        type: string
+      bucket_name:
+        description: "Bucket name (optional, default: terraform-validation-bucket)"
+        required: false
+        type: string
+        default: "terraform-validation-bucket"
+
+  push:
+    branches:
+      - main
+    paths:
+      - "terraform/**"
+      - ".github/workflows/**"
+
+jobs:
+  terraform_oci:
+    name: Terraform ${{ github.event.inputs.action || 'plan' }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # Required for OIDC token
+      contents: read
+
+    env:
+      TF_VAR_compartment_id: ${{ github.event.inputs.compartment_id || secrets.COMPARTMENT_ID }}
+      TF_VAR_oci_region: ${{ secrets.OCI_REGION }}
+      TF_VAR_bucket_name: ${{ github.event.inputs.bucket_name || 'terraform-validation-bucket' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Exchange GitHub OIDC token for OCI session token
+      - name: Configure OCI Authentication
+        uses: ./oci-token-exchange
+        with:
+          oidc_client_identifier: ${{ secrets.OIDC_CLIENT_IDENTIFIER }}
+          domain_base_url: ${{ secrets.DOMAIN_BASE_URL }}
+          oci_tenancy: ${{ secrets.OCI_TENANCY }}
+          oci_region: ${{ secrets.OCI_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.14"
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Terraform Validate
+        working-directory: terraform
+        run: terraform validate
+
+      - name: Terraform Plan
+        working-directory: terraform
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply
+        if: github.event.inputs.action == 'apply'
+        working-directory: terraform
+        run: terraform apply -auto-approve tfplan
+
+      - name: Terraform Destroy
+        if: github.event.inputs.action == 'destroy'
+        working-directory: terraform
+        run: terraform destroy -auto-approve

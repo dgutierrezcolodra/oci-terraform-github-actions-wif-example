@@ -1,0 +1,42 @@
+name: "OCI Token Exchange"
+description: "Exchange GitHub OIDC token for OCI session token. No static credentials needed."
+
+inputs:
+  oidc_client_identifier:
+    description: "OAuth client credentials (client_id:client_secret)"
+    required: true
+  domain_base_url:
+    description: "OCI Identity Domain URL (e.g., https://idcs-xxx.identity.oraclecloud.com)"
+    required: true
+  oci_tenancy:
+    description: "OCI Tenancy OCID"
+    required: true
+  oci_region:
+    description: "OCI Region identifier (e.g., us-ashburn-1)"
+    required: true
+  enable_token_refresh:
+    description: "Enable background token refresh for long-running jobs (true/false)"
+    required: false
+    default: "false"
+  refresh_interval_minutes:
+    description: "Minutes between token refreshes (only used if enable_token_refresh is true)"
+    required: false
+    default: "50"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Python dependencies
+      run: pip install requests cryptography
+      shell: bash
+
+    - name: Exchange OIDC token for OCI session token
+      run: python ${{ github.action_path }}/main.py
+      shell: bash
+      env:
+        INPUT_OIDC_CLIENT_IDENTIFIER: ${{ inputs.oidc_client_identifier }}
+        INPUT_DOMAIN_BASE_URL: ${{ inputs.domain_base_url }}
+        INPUT_OCI_TENANCY: ${{ inputs.oci_tenancy }}
+        INPUT_OCI_REGION: ${{ inputs.oci_region }}
+        INPUT_ENABLE_TOKEN_REFRESH: ${{ inputs.enable_token_refresh }}
+        INPUT_REFRESH_INTERVAL_MINUTES: ${{ inputs.refresh_interval_minutes }}

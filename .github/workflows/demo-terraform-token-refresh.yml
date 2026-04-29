@@ -1,0 +1,64 @@
+name: Demo Terraform Token Refresh
+
+on:
+  workflow_dispatch:
+
+jobs:
+  terraform_token_refresh:
+    name: Terraform Token Refresh Demo
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      TF_VAR_oci_region: ${{ secrets.OCI_REGION }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure OCI with Token Refresh
+        uses: ./oci-token-exchange
+        with:
+          oidc_client_identifier: ${{ secrets.OIDC_CLIENT_IDENTIFIER }}
+          domain_base_url: ${{ secrets.DOMAIN_BASE_URL }}
+          oci_tenancy: ${{ secrets.OCI_TENANCY }}
+          oci_region: ${{ secrets.OCI_REGION }}
+          enable_token_refresh: true
+          refresh_interval_minutes: 1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.14"
+
+      - name: Show initial token timestamp
+        run: |
+          echo "=== Initial token timestamp ==="
+          stat ~/.oci/session_token
+
+      - name: Terraform Init
+        working-directory: examples/long-running-refresh
+        run: terraform init
+
+      - name: Terraform Validate
+        working-directory: examples/long-running-refresh
+        run: terraform validate
+
+      - name: Terraform Apply (simulated long operation)
+        working-directory: examples/long-running-refresh
+        run: |
+          echo "Starting Terraform apply with a simulated long-running operation..."
+          echo "The background daemon refreshes the OCI session token during this run."
+          terraform apply -auto-approve
+
+      - name: Show final token timestamp
+        run: |
+          echo "=== Final token timestamp ==="
+          stat ~/.oci/session_token
+
+      - name: Cleanup
+        if: always()
+        working-directory: examples/long-running-refresh
+        run: terraform destroy -auto-approve || true
