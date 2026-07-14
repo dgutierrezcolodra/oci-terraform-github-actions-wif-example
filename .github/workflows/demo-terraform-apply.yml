@@ -21,6 +21,11 @@ on:
         required: false
         type: string
         default: "terraform-validation-bucket"
+      sdk_debug:
+        description: "Enable redacted OCI SDK diagnostic logging"
+        required: false
+        type: boolean
+        default: false
 
   push:
     branches:
@@ -41,6 +46,7 @@ jobs:
       TF_VAR_compartment_id: ${{ github.event.inputs.compartment_id || secrets.COMPARTMENT_ID }}
       TF_VAR_oci_region: ${{ secrets.OCI_REGION }}
       TF_VAR_bucket_name: ${{ github.event.inputs.bucket_name || 'terraform-validation-bucket' }}
+      OCI_GO_SDK_DEBUG: ${{ inputs.sdk_debug && 'info' || 'null' }}
 
     steps:
       - name: Checkout repository
