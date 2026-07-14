@@ -82,6 +82,40 @@ jobs:
             echo 'OCI_TOKEN_EXCHANGE_SUBJECT_TOKEN_TYPE=jwt'
           } >> "$GITHUB_ENV"
 
+      - name: Diagnose OCI token exchange
+        if: inputs.sdk_debug
+        shell: bash
+        env:
+          WIF_DOMAIN_URL: ${{ secrets.DOMAIN_BASE_URL }}
+          WIF_CLIENT_ID: ${{ secrets.OCI_WIF_CLIENT_ID || secrets.CLIENT_ID }}
+          WIF_CLIENT_SECRET: ${{ secrets.OCI_WIF_CLIENT_SECRET || secrets.CLIENT_SECRET }}
+        run: |
+          key_file="$RUNNER_TEMP/oci-wif/diagnostic-key.pem"
+          response_file="$RUNNER_TEMP/oci-wif/diagnostic-response.json"
+          openssl genpkey -quiet -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$key_file"
+          public_key=$(openssl pkey -in "$key_file" -pubout -outform DER | base64 -w0)
+          status=$(curl --silent --show-error \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            --user "$WIF_CLIENT_ID:$WIF_CLIENT_SECRET" \
+            --header 'Content-Type: application/x-www-form-urlencoded' \
+            --data-urlencode 'grant_type=urn:ietf:params:oauth:grant-type:token-exchange' \
+            --data-urlencode 'requested_token_type=urn:oci:token-type:oci-upst' \
+            --data-urlencode 'subject_token_type=jwt' \
+            --data-urlencode "public_key=$public_key" \
+            --data-urlencode "subject_token@$OCI_WORKLOAD_IDENTITY_TOKEN_PATH" \
+            "$WIF_DOMAIN_URL/oauth2/v1/token")
+          rm -f "$key_file"
+          if [[ "$status" == "200" ]]; then
+            echo 'OCI token exchange diagnostic succeeded (HTTP 200)'
+            rm -f "$response_file"
+          else
+            echo "OCI token exchange diagnostic failed (HTTP $status)"
+            jq '{error, error_description}' "$response_file"
+            rm -f "$response_file"
+            exit 1
+          fi
+
       - name: Terraform Init
         working-directory: terraform
         run: terraform init
