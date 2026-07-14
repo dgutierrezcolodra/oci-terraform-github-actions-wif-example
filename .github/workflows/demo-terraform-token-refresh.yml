@@ -55,6 +55,8 @@ jobs:
             echo 'Missing OCI WIF client credentials' >&2
             exit 1
           fi
+          echo "::add-mask::$WIF_CLIENT_ID"
+          echo "::add-mask::$WIF_CLIENT_SECRET"
           {
             echo 'OCI_AUTH=WorkloadIdentityFederation'
             echo "OCI_REGION=$TF_VAR_oci_region"
