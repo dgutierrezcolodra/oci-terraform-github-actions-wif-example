@@ -66,10 +66,26 @@ jobs:
         shell: bash
         env:
           WIF_DOMAIN_URL: ${{ secrets.DOMAIN_BASE_URL }}
-          WIF_CLIENT_ID: ${{ secrets.OCI_WIF_CLIENT_ID || secrets.CLIENT_ID }}
-          WIF_CLIENT_SECRET: ${{ secrets.OCI_WIF_CLIENT_SECRET || secrets.CLIENT_SECRET }}
+          WIF_CLIENT_ID: ${{ secrets.OCI_WIF_CLIENT_ID }}
+          WIF_CLIENT_SECRET: ${{ secrets.OCI_WIF_CLIENT_SECRET }}
+          WIF_CLIENT_IDENTIFIER: ${{ secrets.OIDC_CLIENT_IDENTIFIER }}
+          LEGACY_WIF_CLIENT_ID: ${{ secrets.CLIENT_ID }}
+          LEGACY_WIF_CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
           WIF_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID || secrets.OCI_TENANCY }}
         run: |
+          if [[ -z "$WIF_CLIENT_ID" || -z "$WIF_CLIENT_SECRET" ]]; then
+            if [[ "$WIF_CLIENT_IDENTIFIER" == *:* ]]; then
+              WIF_CLIENT_ID=${WIF_CLIENT_IDENTIFIER%%:*}
+              WIF_CLIENT_SECRET=${WIF_CLIENT_IDENTIFIER#*:}
+            else
+              WIF_CLIENT_ID=$LEGACY_WIF_CLIENT_ID
+              WIF_CLIENT_SECRET=$LEGACY_WIF_CLIENT_SECRET
+            fi
+          fi
+          if [[ -z "$WIF_CLIENT_ID" || -z "$WIF_CLIENT_SECRET" ]]; then
+            echo 'Missing OCI WIF client credentials' >&2
+            exit 1
+          fi
           {
             echo 'OCI_AUTH=WorkloadIdentityFederation'
             echo "OCI_REGION=$TF_VAR_oci_region"
@@ -87,8 +103,6 @@ jobs:
         shell: bash
         env:
           WIF_DOMAIN_URL: ${{ secrets.DOMAIN_BASE_URL }}
-          WIF_CLIENT_ID: ${{ secrets.OCI_WIF_CLIENT_ID || secrets.CLIENT_ID }}
-          WIF_CLIENT_SECRET: ${{ secrets.OCI_WIF_CLIENT_SECRET || secrets.CLIENT_SECRET }}
         run: |
           key_file="$RUNNER_TEMP/oci-wif/diagnostic-key.pem"
           response_file="$RUNNER_TEMP/oci-wif/diagnostic-response.json"
@@ -97,7 +111,7 @@ jobs:
           status=$(curl --silent --show-error \
             --output "$response_file" \
             --write-out '%{http_code}' \
-            --user "$WIF_CLIENT_ID:$WIF_CLIENT_SECRET" \
+            --user "$OCI_TOKEN_EXCHANGE_CLIENT_ID:$OCI_TOKEN_EXCHANGE_CLIENT_SECRET" \
             --header 'Content-Type: application/x-www-form-urlencoded' \
             --data-urlencode 'grant_type=urn:ietf:params:oauth:grant-type:token-exchange' \
             --data-urlencode 'requested_token_type=urn:oci:token-type:oci-upst' \
