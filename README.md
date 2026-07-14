@@ -59,7 +59,7 @@ Create these repository secrets:
 | `OCI_REGION` | OCI region, for example `eu-madrid-1` |
 | `COMPARTMENT_ID` | Target compartment OCID |
 
-The workflows also accept existing `CLIENT_ID` and `CLIENT_SECRET` secrets as fallback aliases. The `OCI_WIF_*` names take precedence.
+For migration compatibility, the workflows also accept the original combined `OIDC_CLIENT_IDENTIFIER` secret in `client_id:client_secret` format. The separate `OCI_WIF_*` secrets take precedence.
 
 The tenancy OCID is not required by the provider's WIF configuration. The provider obtains the principal and tenancy context from the OCI token.
 
