@@ -5,8 +5,9 @@ bug fixes, documentation improvements, Terraform example updates, GitHub Actions
 workflow improvements, and security hardening.
 
 This repository demonstrates GitHub Actions OIDC to OCI IAM Workload Identity
-Federation using JWT-to-UPST token exchange and Terraform `SecurityToken`
-authentication. Please keep changes focused on that purpose.
+Federation using the OCI Terraform provider's native
+`WorkloadIdentityFederation` authentication. Please keep changes focused on
+that purpose.
 
 ## Table of Contents
 
@@ -98,7 +99,7 @@ Examples:
 
 ```text
 docs(setup): clarify identity domain token setup
-fix(action): handle token exchange HTTP errors
+fix(action): handle GitHub OIDC HTTP errors
 ci(workflows): add Terraform refresh demo
 ```
 
@@ -109,10 +110,8 @@ Run the checks that match the files you changed.
 ### Python action
 
 ```bash
-python3 -m venv .venv
-. .venv/bin/activate
-pip install -r oci-token-exchange/requirements.txt
-python3 -m py_compile oci-token-exchange/main.py
+python3 -m py_compile github-oidc-token/main.py tests/test_github_oidc_token.py
+python3 -m unittest discover -s tests -v
 ```
 
 ### Terraform examples
@@ -170,7 +169,7 @@ must be precise and safe by default.
   claims.
 - Do not document unverified token lifetime behavior as a guarantee.
 - Do not recommend storing OCI API keys in GitHub for this flow.
-- Do not add workflows that upload OIDC tokens, OCI session tokens, private
+- Do not add workflows that upload OIDC tokens, OCI security tokens, private
   keys, Terraform state, or token files as artifacts.
 - Use placeholders such as `<DOMAIN_URL>`, `<IDA_ACCESS_TOKEN>`, and
   `ocid1.tenancy.oc1..aaaaaaa...` instead of real values.

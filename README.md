@@ -1,171 +1,156 @@
-# OCI Terraform Provider with OIDC Token Exchange
+# OCI Terraform Provider with Native WIF from GitHub Actions
 
-Example repository demonstrating how to use the OCI Terraform provider with session token authentication via OCI IAM Workload Identity Federation (WIF) and OIDC token exchange from GitHub Actions. **No static OCI API keys needed.**
+*Technical example current on 14 July 2026*
 
-## Overview
+This repository shows how a GitHub Actions workflow can call Oracle Cloud Infrastructure (OCI) through OCI IAM Workload Identity Federation (WIF). It uses the native `WorkloadIdentityFederation` authentication added in OCI Terraform provider 8.22.0. No OCI user API key, browser login, generated OCI configuration file, or external UPST wrapper is required.
 
-This repository has two parts:
+## What changed in provider 8.22.0
 
-1. **WIF setup and usage** - Configure OCI IAM Workload Identity Federation, exchange a GitHub Actions OIDC JWT for an OCI UPST/session token, and run Terraform with `auth = "SecurityToken"`.
-2. **Long-running Terraform refresh** - Keep Terraform authenticated during long-running operations by refreshing the OCI session token file while Terraform is still running.
+The original version of this repository used provider 7.29 and a Python wrapper that created an RSA key, exchanged the GitHub JWT for an OCI UPST, and configured Terraform with `auth = "SecurityToken"`.
 
-The working examples cover:
+Provider 8.22.0 now performs those operations itself:
 
-1. **OIDC Token Exchange** - GitHub Actions token → OCI UPST/session token
-2. **Terraform Authentication** - OCI provider using `SecurityToken` mode
-3. **Resource Creation** - Creates an Object Storage bucket to validate the flow
-4. **Token Refresh** - Demonstrates refresh during a simulated long-running Terraform apply
+1. Terraform reads the GitHub OIDC JWT from a protected file.
+2. The provider generates an ephemeral RSA key pair.
+3. The provider exchanges the JWT for an OCI UPST.
+4. The provider signs OCI API requests with the matching private key.
+5. The provider renews the UPST and key together when required.
 
-The included Python action (`oci-token-exchange/`) is fully documented for educational purposes.
+The small local action in `github-oidc-token/` only obtains the GitHub JWT and writes it atomically. It never creates OCI credentials.
 
-## Why Use This Pattern?
-
-| Traditional (API Keys) | OIDC (This Example) |
-|------------------------|---------------------|
-| Long-lived OCI API keys stored in secrets | No OCI API keys stored in GitHub |
-| Risk if compromised | Short-lived OCI session tokens |
-| Manual rotation required | Automatic expiration |
-| Broad permissions | Scoped to specific workflows/branches |
-
-## Quick Start
-
-### Prerequisites
-
-Complete OCI setup first. See [SETUP.md](./SETUP.md) for detailed instructions.
-
-**You need:**
-
-1. OCI Identity Domain with Service User
-2. OAuth Client Application registered
-3. Identity Propagation Trust policy configured
-4. GitHub secrets configured
-
-### Usage
-
-1. **Fork this repository**
-
-2. **Configure GitHub Secrets** (Settings → Secrets and variables → Actions):
-
-   | Secret | Example |
-   |--------|---------|
-   | `OIDC_CLIENT_IDENTIFIER` | `client_id:client_secret` |
-   | `DOMAIN_BASE_URL` | `https://idcs-xxx.identity.oraclecloud.com` |
-   | `OCI_TENANCY` | `ocid1.tenancy.oc1..aaa...` |
-   | `OCI_REGION` | `us-ashburn-1` |
-   | `COMPARTMENT_ID` | `ocid1.compartment.oc1..aaa...` |
-
-3. **Run the workflow**:
-   - Go to Actions → "Demo Terraform Apply (Standard)"
-   - Click "Run workflow"
-   - Select action: `plan`, `apply`, or `destroy`
-
-4. **Run the long-running Terraform refresh demo**:
-   - Go to Actions → "Demo Terraform Token Refresh"
-   - Click "Run workflow"
-   - The workflow runs `examples/long-running-refresh/` with token refresh enabled
-
-## How It Works
+## Architecture
 
 ```mermaid
-sequenceDiagram
-    participant GH as GitHub Actions
-    participant OIDC as GitHub OIDC Provider
-    participant OCI as OCI Identity Domain
-    participant TF as Terraform
+flowchart LR
+    A[GitHub Actions]
+    B[GitHub OIDC endpoint]
+    C[JWT file]
+    D[OCI Terraform provider 8.22]
+    E[OCI Identity Domain]
+    F[OCI resources]
 
-    GH->>OIDC: 1. Request OIDC token
-    OIDC-->>GH: JWT (contains repo, branch, etc.)
-
-    GH->>OCI: 2. Exchange JWT for UPST/session token
-    OCI-->>GH: Short-lived UPST/session token
-
-    GH->>GH: 3. Write ~/.oci/config
-
-    TF->>OCI: 4. API calls with session token
+    A -->|Requests JWT| B
+    B -->|Short-lived JWT| C
+    C -->|Source identity| D
+    D -->|JWT plus ephemeral public key| E
+    E -->|OCI UPST| D
+    D -->|Signed OCI API calls| F
 ```
 
-### The Token Exchange Action
+## Prerequisites
 
-The `oci-token-exchange/` directory contains a simple Python action:
+Complete the one-time OCI configuration in [SETUP.md](./SETUP.md). You need:
 
-```
-oci-token-exchange/
-├── action.yml         # GitHub Action definition
-├── main.py            # Token exchange logic (well-documented)
-└── requirements.txt   # requests, cryptography
-```
+- An OCI Identity Domain service user and least-privilege IAM policy.
+- An OCI Identity Domain confidential application for token exchange.
+- One active GitHub Identity Propagation Trust with exact audience and subject restrictions.
+- A GitHub Actions workflow with `id-token: write` permission.
+- OCI Terraform provider 8.22.0 or later in the 8.x series.
 
-**`main.py` does 4 things:**
+## GitHub configuration
 
-1. **Generate RSA key pair** - For signing OCI API requests
-2. **Get GitHub OIDC token** - JWT with workflow context
-3. **Exchange with OCI** - Trade JWT for OCI UPST/session token
-4. **Configure OCI CLI** - Write `~/.oci/config`
+Create these repository secrets:
 
-Read the code - it's designed to be educational!
+| Secret | Purpose |
+|---|---|
+| `OCI_WIF_CLIENT_ID` | Client ID of the OCI token-exchange application |
+| `OCI_WIF_CLIENT_SECRET` | Client secret of the OCI token-exchange application |
+| `DOMAIN_BASE_URL` | OCI Identity Domain URL |
+| `OCI_REGION` | OCI region, for example `eu-madrid-1` |
+| `COMPARTMENT_ID` | Target compartment OCID |
 
-### Terraform Provider
+The tenancy OCID is not required by the provider's WIF configuration. The provider obtains the principal and tenancy context from the OCI token.
+
+## Terraform configuration
 
 ```hcl
+terraform {
+  required_providers {
+    oci = {
+      source  = "oracle/oci"
+      version = ">= 8.22.0, < 9.0.0"
+    }
+  }
+}
+
 provider "oci" {
-  auth                = "SecurityToken"
-  config_file_profile = "DEFAULT"
-  region              = var.oci_region
+  auth   = "WorkloadIdentityFederation"
+  region = var.oci_region
 }
 ```
 
-## Repository Structure
+The workflows supply the remaining configuration through environment variables:
 
-```
-.
-├── .github/workflows/
-│   ├── demo-terraform-apply.yml          # Demo: Standard WIF + Terraform flow
-│   └── demo-terraform-token-refresh.yml  # Demo: Long-running Terraform refresh
-├── examples/
-│   └── long-running-refresh/  # Advanced refresh demo for long Terraform runs
-├── oci-token-exchange/        # Python action (read the code!)
-│   ├── action.yml
-│   ├── main.py
-│   └── requirements.txt
-├── terraform/                 # Example: creates Object Storage bucket
-├── CONTRIBUTING.md
-├── README.md
-├── SETUP.md                   # OCI configuration guide
-└── LICENSE.txt
+```text
+OCI_WORKLOAD_IDENTITY_TOKEN_PATH
+OCI_TOKEN_EXCHANGE_DOMAIN_URL
+OCI_TOKEN_EXCHANGE_AUTH=OAuthClientCredentials
+OCI_TOKEN_EXCHANGE_CLIENT_ID
+OCI_TOKEN_EXCHANGE_CLIENT_SECRET
+OCI_TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE=urn:oci:token-type:oci-upst
+OCI_TOKEN_EXCHANGE_SUBJECT_TOKEN_TYPE=jwt
 ```
 
-## Long-Running Terraform Operations
+## Run the example
 
-OCI UPST/session tokens are short-lived. For Terraform jobs that may run for an extended period, use the token refresh mode instead of relying on OAuth application token lifetime settings.
+1. Fork the repository and complete [SETUP.md](./SETUP.md).
+2. Add the GitHub secrets listed above.
+3. Open **Actions** and select **Demo Terraform Apply (Standard)**.
+4. Run `plan` first.
+5. Run `apply` to create the private validation bucket.
+6. Run `destroy` when the test is complete.
 
-### Enable Auto-Refresh
+## Long-running Terraform operations
 
-For Terraform jobs that may exceed the token lifetime, enable background refresh:
+The OCI provider automatically renews its OCI UPST, but it cannot call GitHub to replace an expired source JWT. For a long Terraform process, the local action can refresh only the GitHub JWT file:
 
 ```yaml
-- name: Configure OCI Authentication
-  uses: ./oci-token-exchange
+- name: Create refreshable GitHub OIDC token file
+  uses: ./github-oidc-token
   with:
-    oidc_client_identifier: ${{ secrets.OIDC_CLIENT_IDENTIFIER }}
-    domain_base_url: ${{ secrets.DOMAIN_BASE_URL }}
-    oci_tenancy: ${{ secrets.OCI_TENANCY }}
-    oci_region: ${{ secrets.OCI_REGION }}
-    enable_token_refresh: true          # Enable background refresh
-    refresh_interval_minutes: 50        # Refresh every 50 minutes
+    audience: https://cloud.oracle.com
+    enable_token_refresh: true
+    refresh_interval_minutes: 5
 ```
 
-This spawns a background daemon that re-exchanges the GitHub OIDC token for a fresh OCI session token before the current token expires. The `Demo Terraform Token Refresh` workflow runs a Terraform apply under `examples/long-running-refresh/` to demonstrate the pattern.
+The provider rereads this file when it needs another OCI token exchange. It continues to own the OCI UPST and proof-of-possession key, so they cannot become mismatched.
 
-## Related Resources
+The **Demo Terraform Token Refresh** workflow defaults to a two-minute smoke test. Set `wait_duration` to `65m` to exercise a complete OCI UPST renewal. The longer test consumes a GitHub runner for more than one hour.
 
-- [SETUP.md](./SETUP.md) - Step-by-step OCI configuration
-- [Common issues](./SETUP.md#common-issues) - Setup and runtime troubleshooting
-- [Long-running Terraform refresh example](./examples/long-running-refresh/)
-- [OCI JWT-to-UPST Token Exchange](https://docs.oracle.com/en-us/iaas/Content/Identity/api-getstarted/json_web_token_exchange.htm)
-- [OCI Identity Propagation Trust](https://docs.oracle.com/en-us/iaas/Content/Identity/identitypropagationtrust/manage-identity-propagation-trust.htm)
-- [GitHub OIDC Security Hardening](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect)
+## Repository structure
+
+```text
+.
+├── .github/workflows/
+│   ├── demo-terraform-apply.yml
+│   └── demo-terraform-token-refresh.yml
+├── examples/long-running-refresh/
+├── github-oidc-token/
+│   ├── action.yml
+│   └── main.py
+├── terraform/
+├── tests/
+├── README.md
+└── SETUP.md
+```
+
+## Security properties
+
+- The trust must match the exact GitHub issuer, audience, and repository subject.
+- Do not use `sub eq *` in production.
+- The runtime OAuth application must not have Identity Domain Administrator privileges.
+- The JWT file is written atomically with mode `0600` under the runner temporary directory.
+- The workflow never writes an OCI UPST, OCI private key, or client secret to logs.
+- Use GitHub environments and environment protection rules for production deployments.
+- Give the service user only the OCI permissions required by the Terraform module.
+
+## References
+
+- [OCI Terraform provider 8.22.0 changelog](https://github.com/oracle/terraform-provider-oci/blob/v8.22.0/CHANGELOG.md)
+- [OCI provider generic WIF implementation](https://github.com/oracle/terraform-provider-oci/blob/v8.22.0/internal/provider/workload_identity_federation.go)
+- [OCI JWT-to-UPST exchange](https://docs.oracle.com/en-us/iaas/Content/Identity/api-getstarted/json_web_token_exchange.htm)
+- [GitHub OIDC token documentation](https://docs.github.com/en/actions/concepts/security/openid-connect)
 
 ## License
 
-Copyright (c) 2025 Oracle and/or its affiliates.
-Licensed under the Universal Permissive License v1.0.
+Copyright (c) 2025 Oracle and/or its affiliates. Licensed under the Universal Permissive License v1.0.

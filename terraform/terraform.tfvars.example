@@ -7,8 +7,5 @@ compartment_id = "ocid1.compartment.oc1..aaaaaaaaxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 # Optional: OCI region (default: us-ashburn-1)
 # oci_region = "eu-frankfurt-1"
 
-# Optional: OCI CLI profile name (default: DEFAULT)
-# oci_profile = "DEFAULT"
-
 # Optional: Custom bucket name (default: terraform-validation-bucket)
 # bucket_name = "my-validation-bucket"

@@ -20,5 +20,5 @@ output "bucket_id" {
 
 output "validation_status" {
   description = "Confirmation that authentication succeeded"
-  value       = "✓ OCI Terraform Provider successfully authenticated via OIDC token exchange"
+  value       = "OCI Terraform provider successfully authenticated with native Workload Identity Federation"
 }

@@ -44,21 +44,35 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # Exchange GitHub OIDC token for OCI session token
-      - name: Configure OCI Authentication
-        uses: ./oci-token-exchange
-        with:
-          oidc_client_identifier: ${{ secrets.OIDC_CLIENT_IDENTIFIER }}
-          domain_base_url: ${{ secrets.DOMAIN_BASE_URL }}
-          oci_tenancy: ${{ secrets.OCI_TENANCY }}
-          oci_region: ${{ secrets.OCI_REGION }}
+        uses: actions/checkout@v6
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: "1.14"
+          terraform_version: "1.15.4"
+
+      - name: Create GitHub OIDC token file
+        uses: ./github-oidc-token
+        with:
+          audience: https://cloud.oracle.com
+
+      - name: Export OCI WIF configuration
+        shell: bash
+        env:
+          WIF_DOMAIN_URL: ${{ secrets.DOMAIN_BASE_URL }}
+          WIF_CLIENT_ID: ${{ secrets.OCI_WIF_CLIENT_ID }}
+          WIF_CLIENT_SECRET: ${{ secrets.OCI_WIF_CLIENT_SECRET }}
+        run: |
+          {
+            echo 'OCI_AUTH=WorkloadIdentityFederation'
+            echo "OCI_REGION=$TF_VAR_oci_region"
+            echo "OCI_TOKEN_EXCHANGE_DOMAIN_URL=$WIF_DOMAIN_URL"
+            echo 'OCI_TOKEN_EXCHANGE_AUTH=OAuthClientCredentials'
+            echo "OCI_TOKEN_EXCHANGE_CLIENT_ID=$WIF_CLIENT_ID"
+            echo "OCI_TOKEN_EXCHANGE_CLIENT_SECRET=$WIF_CLIENT_SECRET"
+            echo 'OCI_TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE=urn:oci:token-type:oci-upst'
+            echo 'OCI_TOKEN_EXCHANGE_SUBJECT_TOKEN_TYPE=jwt'
+          } >> "$GITHUB_ENV"
 
       - name: Terraform Init
         working-directory: terraform

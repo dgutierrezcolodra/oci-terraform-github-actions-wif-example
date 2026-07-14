@@ -9,12 +9,6 @@ variable "oci_region" {
   default     = "us-ashburn-1"
 }
 
-variable "oci_profile" {
-  description = "OCI CLI profile name to use for authentication"
-  type        = string
-  default     = "DEFAULT"
-}
-
 variable "bucket_name" {
   description = "Name of the Object Storage bucket to create"
   type        = string
