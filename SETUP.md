@@ -206,6 +206,8 @@ Open **Settings → Secrets and variables → Actions** and create:
 
 The examples currently reference all five values through the `secrets` context. If you store non-sensitive values as repository variables, change their workflow references from `secrets.NAME` to `vars.NAME`.
 
+For repositories migrated from the original example, the workflows also accept the legacy `CLIENT_ID` and `CLIENT_SECRET` secret names as fallbacks. `OCI_WIF_CLIENT_ID` and `OCI_WIF_CLIENT_SECRET` take precedence when both forms exist.
+
 The old combined `OIDC_CLIENT_IDENTIFIER` and `OCI_TENANCY` secrets are no longer used.
 
 ## 7. Verify with a plan

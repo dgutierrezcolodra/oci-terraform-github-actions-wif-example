@@ -59,6 +59,8 @@ Create these repository secrets:
 | `OCI_REGION` | OCI region, for example `eu-madrid-1` |
 | `COMPARTMENT_ID` | Target compartment OCID |
 
+The workflows also accept existing `CLIENT_ID` and `CLIENT_SECRET` secrets as fallback aliases. The `OCI_WIF_*` names take precedence.
+
 The tenancy OCID is not required by the provider's WIF configuration. The provider obtains the principal and tenancy context from the OCI token.
 
 ## Terraform configuration
