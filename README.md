@@ -113,7 +113,7 @@ The OCI provider automatically renews its OCI UPST, but it cannot call GitHub to
   with:
     audience: https://cloud.oracle.com
     enable_token_refresh: true
-    refresh_interval_minutes: 5
+    refresh_interval_minutes: 1
 ```
 
 The provider rereads this file when it needs another OCI token exchange. It continues to own the OCI UPST and proof-of-possession key, so they cannot become mismatched.

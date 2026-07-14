@@ -40,8 +40,6 @@ curl --request POST \
 
 Save the response `id`. The Identity Propagation Trust needs the Identity Domain user ID, not the user's OCI OCID.
 
-Use a personal administrator access token or a separate administrator application only for setup. Do not give the runtime token-exchange application an administrator role.
-
 ## 2. Grant least-privilege OCI permissions
 
 Add the service user to an Identity Domain group. This repository creates and deletes one empty Object Storage bucket. It therefore needs bucket management in the target compartment and permission to read the tenancy-level Object Storage namespace:
@@ -96,6 +94,7 @@ The `sub` claim depends on the workflow context. With GitHub's default subject f
 ```text
 repo:<owner>/<repository>:ref:refs/heads/main
 repo:<owner>/<repository>:environment:production
+repo:<owner>/<repository>:pull_request
 ```
 
 For this repository, a workflow dispatched from the migration branch has this subject:
@@ -111,6 +110,18 @@ repo:dgutierrezcolodra/oci-terraform-github-actions-wif-example:ref:refs/heads/m
 ```
 
 Use the exact repository name and ref, including case. If the job declares a GitHub environment, the environment replaces the ref in the default `sub`. If the organization or repository has customized its OIDC subject template, inspect the actual claims and configure the trust for that template instead.
+
+GitHub changes the default for repositories created after 15 July 2026 to an immutable subject that includes the owner and repository IDs:
+
+```text
+repo:<owner>@<owner-id>/<repository>@<repository-id>:ref:refs/heads/main
+```
+
+Repositories created before that date keep the previous format unless they opt in. A repository renamed or transferred after that date also moves to the immutable format. This repository currently uses the previous format (`use_immutable_subject` is `false`). Check the repository setting and, most importantly, the `sub` in an actual job token before creating the trust:
+
+```bash
+gh api repos/<owner>/<repository>/actions/oidc/customization/sub
+```
 
 ## 5. Create the Identity Propagation Trust
 
@@ -233,7 +244,7 @@ GitHub JWTs are also short-lived. For a Terraform process that can exceed the OC
   with:
     audience: https://cloud.oracle.com
     enable_token_refresh: true
-    refresh_interval_minutes: 5
+    refresh_interval_minutes: 1
 ```
 
 Do not externally replace the OCI UPST or private key. Those values are managed together inside the provider.
