@@ -68,10 +68,12 @@ jobs:
           WIF_DOMAIN_URL: ${{ secrets.DOMAIN_BASE_URL }}
           WIF_CLIENT_ID: ${{ secrets.OCI_WIF_CLIENT_ID || secrets.CLIENT_ID }}
           WIF_CLIENT_SECRET: ${{ secrets.OCI_WIF_CLIENT_SECRET || secrets.CLIENT_SECRET }}
+          WIF_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID || secrets.OCI_TENANCY }}
         run: |
           {
             echo 'OCI_AUTH=WorkloadIdentityFederation'
             echo "OCI_REGION=$TF_VAR_oci_region"
+            echo "OCI_TENANCY_OCID=$WIF_TENANCY_OCID"
             echo "OCI_TOKEN_EXCHANGE_DOMAIN_URL=$WIF_DOMAIN_URL"
             echo 'OCI_TOKEN_EXCHANGE_AUTH=OAuthClientCredentials'
             echo "OCI_TOKEN_EXCHANGE_CLIENT_ID=$WIF_CLIENT_ID"
