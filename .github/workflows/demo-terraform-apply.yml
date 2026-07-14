@@ -10,17 +10,15 @@ on:
         type: choice
         options:
           - plan
-          - apply
-          - destroy
+          - apply-and-destroy
       compartment_id:
         description: "Compartment OCID (optional, uses secret if not provided)"
         required: false
         type: string
       bucket_name:
-        description: "Bucket name (optional, default: terraform-validation-bucket)"
+        description: "Bucket name (optional; a unique name is generated when empty)"
         required: false
         type: string
-        default: "terraform-validation-bucket"
 
   push:
     branches:
@@ -40,7 +38,7 @@ jobs:
     env:
       TF_VAR_compartment_id: ${{ github.event.inputs.compartment_id || secrets.COMPARTMENT_ID }}
       TF_VAR_oci_region: ${{ secrets.OCI_REGION }}
-      TF_VAR_bucket_name: ${{ github.event.inputs.bucket_name || 'terraform-validation-bucket' }}
+      TF_VAR_bucket_name: ${{ github.event.inputs.bucket_name || format('terraform-wif-validation-{0}', github.run_id) }}
 
     steps:
       - name: Checkout repository
@@ -100,11 +98,11 @@ jobs:
         run: terraform plan -out=tfplan
 
       - name: Terraform Apply
-        if: github.event.inputs.action == 'apply'
+        if: github.event.inputs.action == 'apply-and-destroy'
         working-directory: terraform
         run: terraform apply -auto-approve tfplan
 
-      - name: Terraform Destroy
-        if: github.event.inputs.action == 'destroy'
+      - name: Terraform Destroy (cleanup)
+        if: always() && github.event.inputs.action == 'apply-and-destroy'
         working-directory: terraform
         run: terraform destroy -auto-approve

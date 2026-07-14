@@ -99,8 +99,9 @@ OCI_TOKEN_EXCHANGE_SUBJECT_TOKEN_TYPE=jwt
 2. Add the GitHub secrets listed above.
 3. Open **Actions** and select **Demo Terraform Apply (Standard)**.
 4. Run `plan` first.
-5. Run `apply` to create the private validation bucket.
-6. Run `destroy` when the test is complete.
+5. Optionally run `apply-and-destroy` to create a private validation bucket and remove it in the same workflow run.
+
+The example intentionally keeps Terraform state local to the job. It does not support creating a bucket in one workflow run and destroying it in a later run. Use a remote backend for persistent infrastructure.
 
 ## Long-running Terraform operations
 

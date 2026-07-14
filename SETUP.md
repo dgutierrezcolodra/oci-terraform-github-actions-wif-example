@@ -219,7 +219,7 @@ Run **Demo Terraform Apply (Standard)** with action `plan`. A successful run sho
 - Terraform completed the OCI data-source reads and produced a plan.
 - No `~/.oci/config`, OCI private key, or OCI security-token file was created by the workflow.
 
-Run `apply` only after the plan succeeds. Run `destroy` after the validation.
+Run `apply-and-destroy` only after the plan succeeds. It creates and removes the validation bucket in the same job, while the local Terraform state is still available. Configure a remote backend before adapting this example to manage persistent infrastructure.
 
 ## Long-running processes
 

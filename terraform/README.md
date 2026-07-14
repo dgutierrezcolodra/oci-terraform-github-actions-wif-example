@@ -10,7 +10,7 @@ The module requires OCI provider 8.22.0 or later. Authentication settings come f
 - `provider.tf`: selects `WorkloadIdentityFederation` authentication.
 - `variables.tf`: defines the compartment, region, and bucket name.
 - `main.tf`: reads the namespace and creates the bucket.
-- `outputs.tf`: returns validation information.
+- `outputs.tf`: returns information about the planned or created bucket.
 
 ## Required environment
 
