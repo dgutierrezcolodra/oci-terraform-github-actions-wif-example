@@ -151,7 +151,7 @@ The **Demo Terraform Token Refresh** workflow defaults to a two-minute smoke tes
 
 ## References
 
-- [OCI Terraform provider 8.23.0 changelog](https://github.com/oracle/terraform-provider-oci/blob/v8.22.0/CHANGELOG.md)
+- [OCI Terraform provider 8.23.0 changelog](https://github.com/oracle/terraform-provider-oci/blob/v8.23.0/CHANGELOG.md)
 - [OCI provider generic WIF implementation](https://github.com/oracle/terraform-provider-oci/blob/v8.23.0/internal/provider/workload_identity_federation.go)
 - [OCI JWT-to-UPST exchange](https://docs.oracle.com/en-us/iaas/Content/Identity/api-getstarted/json_web_token_exchange.htm)
 - [GitHub OIDC token documentation](https://docs.github.com/en/actions/concepts/security/openid-connect)
