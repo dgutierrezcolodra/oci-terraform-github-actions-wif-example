@@ -276,7 +276,7 @@ Required provider variables are documented in [README.md](./README.md#terraform-
 
 ### Long run fails after the initial OCI token expires
 
-Enable `enable_token_refresh`, keep the refresh interval shorter than the GitHub JWT lifetime, and confirm that the token file modification time changes. Never print the token contents.
+Enable `enable_token_refresh` and confirm that the token file modification time changes. GitHub OIDC JWTs expire roughly 5 minutes after issuance (observed behavior; GitHub does not document the lifetime officially), which is why the action only accepts refresh intervals between 1 and 4 minutes. Never print the token contents.
 
 ## References
 

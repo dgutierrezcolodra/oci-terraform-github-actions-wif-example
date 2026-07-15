@@ -56,6 +56,27 @@ class OidcHandler(BaseHTTPRequestHandler):
 
 
 class GitHubOidcTokenTest(unittest.TestCase):
+    def test_rejects_refresh_interval_above_github_jwt_lifetime(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            env = os.environ.copy()
+            env.update(
+                {
+                    "INPUT_REFRESH_INTERVAL_MINUTES": "5",
+                    "RUNNER_TEMP": temporary_dir,
+                }
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(ACTION)],
+                env=env,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Refresh interval must be between 1 and 4 minutes", result.stderr)
+
     def test_writes_protected_token_and_github_command_files(self) -> None:
         server = ThreadingHTTPServer(("127.0.0.1", 0), OidcHandler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)

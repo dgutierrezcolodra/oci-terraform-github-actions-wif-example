@@ -15,9 +15,11 @@ inputs:
     required: false
     default: "false"
   refresh_interval_minutes:
-    description: Minutes between GitHub OIDC JWT refreshes.
+    description: Minutes between GitHub OIDC JWT refreshes. Must stay below the
+      GitHub OIDC JWT lifetime (~5 minutes, not officially documented), so the
+      accepted range is 1-4.
     required: false
-    default: "5"
+    default: "3"
 
 outputs:
   token_path:

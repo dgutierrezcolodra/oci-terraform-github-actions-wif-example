@@ -155,11 +155,15 @@ def main() -> None:
     if not audience:
         raise RuntimeError("INPUT_AUDIENCE cannot be empty")
     try:
-        interval = int(os.environ.get("INPUT_REFRESH_INTERVAL_MINUTES", "5"))
+        interval = int(os.environ.get("INPUT_REFRESH_INTERVAL_MINUTES", "3"))
     except ValueError as exc:
         raise RuntimeError("Refresh interval must be an integer") from exc
-    if not 1 <= interval <= 60:
-        raise RuntimeError("Refresh interval must be between 1 and 60 minutes")
+    if not 1 <= interval <= 4:
+        raise RuntimeError(
+            "Refresh interval must be between 1 and 4 minutes: GitHub OIDC JWTs "
+            "expire after roughly 5 minutes, so longer intervals leave an "
+            "expired source token on disk"
+        )
 
     if args.daemon:
         refresh_forever(path, audience, interval)

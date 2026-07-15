@@ -118,6 +118,8 @@ The OCI provider automatically renews its OCI UPST, but it cannot call GitHub to
 
 The provider rereads this file when it needs another OCI token exchange. It continues to own the OCI UPST and proof-of-possession key, so they cannot become mismatched.
 
+GitHub OIDC JWTs expire roughly five minutes after issuance (an observed lifetime that GitHub does not officially document). The action therefore accepts refresh intervals only from 1 through 4 minutes.
+
 The **Demo Terraform Token Refresh** workflow defaults to a two-minute smoke test. Set `wait_duration` to `65m` to exercise a complete OCI UPST renewal. The longer test consumes a GitHub runner for more than one hour.
 
 ## Repository structure
