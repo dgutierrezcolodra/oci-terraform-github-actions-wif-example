@@ -10,17 +10,15 @@ on:
         type: choice
         options:
           - plan
-          - apply
-          - destroy
+          - apply-and-destroy
       compartment_id:
         description: "Compartment OCID (optional, uses secret if not provided)"
         required: false
         type: string
       bucket_name:
-        description: "Bucket name (optional, default: terraform-validation-bucket)"
+        description: "Bucket name (optional; a unique name is generated when empty)"
         required: false
         type: string
-        default: "terraform-validation-bucket"
 
   push:
     branches:
@@ -40,25 +38,52 @@ jobs:
     env:
       TF_VAR_compartment_id: ${{ github.event.inputs.compartment_id || secrets.COMPARTMENT_ID }}
       TF_VAR_oci_region: ${{ secrets.OCI_REGION }}
-      TF_VAR_bucket_name: ${{ github.event.inputs.bucket_name || 'terraform-validation-bucket' }}
+      TF_VAR_bucket_name: ${{ github.event.inputs.bucket_name || format('terraform-wif-validation-{0}', github.run_id) }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # Exchange GitHub OIDC token for OCI session token
-      - name: Configure OCI Authentication
-        uses: ./oci-token-exchange
-        with:
-          oidc_client_identifier: ${{ secrets.OIDC_CLIENT_IDENTIFIER }}
-          domain_base_url: ${{ secrets.DOMAIN_BASE_URL }}
-          oci_tenancy: ${{ secrets.OCI_TENANCY }}
-          oci_region: ${{ secrets.OCI_REGION }}
+        uses: actions/checkout@v6
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: "1.14"
+          terraform_version: "1.15.4"
+
+      - name: Create GitHub OIDC token file
+        uses: ./github-oidc-token
+        with:
+          audience: https://cloud.oracle.com
+
+      - name: Export OCI WIF configuration
+        shell: bash
+        env:
+          WIF_DOMAIN_URL: ${{ secrets.DOMAIN_BASE_URL }}
+          WIF_CLIENT_ID: ${{ secrets.OCI_WIF_CLIENT_ID }}
+          WIF_CLIENT_SECRET: ${{ secrets.OCI_WIF_CLIENT_SECRET }}
+          WIF_CLIENT_IDENTIFIER: ${{ secrets.OIDC_CLIENT_IDENTIFIER }}
+        run: |
+          if [[ -z "$WIF_CLIENT_ID" || -z "$WIF_CLIENT_SECRET" ]]; then
+            if [[ "$WIF_CLIENT_IDENTIFIER" == *:* ]]; then
+              WIF_CLIENT_ID=${WIF_CLIENT_IDENTIFIER%%:*}
+              WIF_CLIENT_SECRET=${WIF_CLIENT_IDENTIFIER#*:}
+            fi
+          fi
+          if [[ -z "$WIF_CLIENT_ID" || -z "$WIF_CLIENT_SECRET" ]]; then
+            echo 'Missing OCI WIF client credentials' >&2
+            exit 1
+          fi
+          echo "::add-mask::$WIF_CLIENT_ID"
+          echo "::add-mask::$WIF_CLIENT_SECRET"
+          {
+            echo 'OCI_AUTH=WorkloadIdentityFederation'
+            echo "OCI_REGION=$TF_VAR_oci_region"
+            echo "OCI_TOKEN_EXCHANGE_DOMAIN_URL=$WIF_DOMAIN_URL"
+            echo 'OCI_TOKEN_EXCHANGE_AUTH=OAuthClientCredentials'
+            echo "OCI_TOKEN_EXCHANGE_CLIENT_ID=$WIF_CLIENT_ID"
+            echo "OCI_TOKEN_EXCHANGE_CLIENT_SECRET=$WIF_CLIENT_SECRET"
+            echo 'OCI_TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE=urn:oci:token-type:oci-upst'
+            echo 'OCI_TOKEN_EXCHANGE_SUBJECT_TOKEN_TYPE=jwt'
+          } >> "$GITHUB_ENV"
 
       - name: Terraform Init
         working-directory: terraform
@@ -73,11 +98,11 @@ jobs:
         run: terraform plan -out=tfplan
 
       - name: Terraform Apply
-        if: github.event.inputs.action == 'apply'
+        if: github.event.inputs.action == 'apply-and-destroy'
         working-directory: terraform
         run: terraform apply -auto-approve tfplan
 
-      - name: Terraform Destroy
-        if: github.event.inputs.action == 'destroy'
+      - name: Terraform Destroy (cleanup)
+        if: always() && github.event.inputs.action == 'apply-and-destroy'
         working-directory: terraform
         run: terraform destroy -auto-approve

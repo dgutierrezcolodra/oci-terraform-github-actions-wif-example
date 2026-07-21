@@ -17,8 +17,3 @@ output "bucket_id" {
   description = "OCID of the created bucket"
   value       = oci_objectstorage_bucket.validation_bucket.id
 }
-
-output "validation_status" {
-  description = "Confirmation that authentication succeeded"
-  value       = "✓ OCI Terraform Provider successfully authenticated via OIDC token exchange"
-}

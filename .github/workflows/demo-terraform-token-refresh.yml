@@ -2,6 +2,12 @@ name: Demo Terraform Token Refresh
 
 on:
   workflow_dispatch:
+    inputs:
+      wait_duration:
+        description: "Terraform wait duration; use 65m for a full UPST-renewal test"
+        required: false
+        default: "120s"
+        type: string
 
 jobs:
   terraform_token_refresh:
@@ -13,30 +19,59 @@ jobs:
 
     env:
       TF_VAR_oci_region: ${{ secrets.OCI_REGION }}
+      TF_VAR_wait_duration: ${{ inputs.wait_duration }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Configure OCI with Token Refresh
-        uses: ./oci-token-exchange
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
         with:
-          oidc_client_identifier: ${{ secrets.OIDC_CLIENT_IDENTIFIER }}
-          domain_base_url: ${{ secrets.DOMAIN_BASE_URL }}
-          oci_tenancy: ${{ secrets.OCI_TENANCY }}
-          oci_region: ${{ secrets.OCI_REGION }}
+          terraform_version: "1.15.4"
+
+      - name: Create refreshable GitHub OIDC token file
+        uses: ./github-oidc-token
+        with:
+          audience: https://cloud.oracle.com
           enable_token_refresh: true
           refresh_interval_minutes: 1
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "1.14"
+      - name: Export OCI WIF configuration
+        shell: bash
+        env:
+          WIF_DOMAIN_URL: ${{ secrets.DOMAIN_BASE_URL }}
+          WIF_CLIENT_ID: ${{ secrets.OCI_WIF_CLIENT_ID }}
+          WIF_CLIENT_SECRET: ${{ secrets.OCI_WIF_CLIENT_SECRET }}
+          WIF_CLIENT_IDENTIFIER: ${{ secrets.OIDC_CLIENT_IDENTIFIER }}
+        run: |
+          if [[ -z "$WIF_CLIENT_ID" || -z "$WIF_CLIENT_SECRET" ]]; then
+            if [[ "$WIF_CLIENT_IDENTIFIER" == *:* ]]; then
+              WIF_CLIENT_ID=${WIF_CLIENT_IDENTIFIER%%:*}
+              WIF_CLIENT_SECRET=${WIF_CLIENT_IDENTIFIER#*:}
+            fi
+          fi
+          if [[ -z "$WIF_CLIENT_ID" || -z "$WIF_CLIENT_SECRET" ]]; then
+            echo 'Missing OCI WIF client credentials' >&2
+            exit 1
+          fi
+          echo "::add-mask::$WIF_CLIENT_ID"
+          echo "::add-mask::$WIF_CLIENT_SECRET"
+          {
+            echo 'OCI_AUTH=WorkloadIdentityFederation'
+            echo "OCI_REGION=$TF_VAR_oci_region"
+            echo "OCI_TOKEN_EXCHANGE_DOMAIN_URL=$WIF_DOMAIN_URL"
+            echo 'OCI_TOKEN_EXCHANGE_AUTH=OAuthClientCredentials'
+            echo "OCI_TOKEN_EXCHANGE_CLIENT_ID=$WIF_CLIENT_ID"
+            echo "OCI_TOKEN_EXCHANGE_CLIENT_SECRET=$WIF_CLIENT_SECRET"
+            echo 'OCI_TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE=urn:oci:token-type:oci-upst'
+            echo 'OCI_TOKEN_EXCHANGE_SUBJECT_TOKEN_TYPE=jwt'
+          } >> "$GITHUB_ENV"
 
       - name: Show initial token timestamp
         run: |
           echo "=== Initial token timestamp ==="
-          stat ~/.oci/session_token
+          stat "$OCI_WORKLOAD_IDENTITY_TOKEN_PATH"
 
       - name: Terraform Init
         working-directory: examples/long-running-refresh
@@ -50,13 +85,14 @@ jobs:
         working-directory: examples/long-running-refresh
         run: |
           echo "Starting Terraform apply with a simulated long-running operation..."
-          echo "The background daemon refreshes the OCI session token during this run."
+          echo "The background daemon refreshes only the GitHub source JWT file."
+          echo "The OCI provider owns and renews the OCI UPST and RSA key."
           terraform apply -auto-approve
 
       - name: Show final token timestamp
         run: |
           echo "=== Final token timestamp ==="
-          stat ~/.oci/session_token
+          stat "$OCI_WORKLOAD_IDENTITY_TOKEN_PATH"
 
       - name: Cleanup
         if: always()

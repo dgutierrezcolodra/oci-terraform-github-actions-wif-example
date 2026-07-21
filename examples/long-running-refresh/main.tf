@@ -1,34 +1,30 @@
-# Example: Terraform Token Refresh During Long-Running Operations
+# Example: Terraform native WIF during long-running operations
 #
-# This example validates that the token refresh daemon can keep Terraform
-# authenticated while an apply is still running.
+# The helper refreshes only the GitHub source JWT file. OCI provider 8.22+
+# owns the OCI UPST and its proof-of-possession key and renews them together.
 #
 # How it works:
 # 1. Make an OCI API call (data source)
-# 2. Wait 2 minutes (simulating a long operation)
+# 2. Wait for the configured duration
 # 3. Make another OCI API call
-#
-# If the second call succeeds after the wait, Terraform was able to continue
-# using the refreshed OCI session token.
 
 terraform {
-  required_version = ">= 1.12.0"
+  required_version = ">= 1.5.0"
   required_providers {
     oci = {
       source  = "oracle/oci"
-      version = ">= 7.0"
+      version = ">= 8.22.0, < 9.0.0"
     }
     time = {
       source  = "hashicorp/time"
-      version = ">= 0.9"
+      version = ">= 0.13.1, < 1.0.0"
     }
   }
 }
 
 provider "oci" {
-  auth                = "SecurityToken"
-  config_file_profile = "DEFAULT"
-  region              = var.oci_region
+  auth   = "WorkloadIdentityFederation"
+  region = var.oci_region
 }
 
 variable "oci_region" {
@@ -36,12 +32,18 @@ variable "oci_region" {
   type        = string
 }
 
+variable "wait_duration" {
+  description = "Duration used to simulate a long-running Terraform operation"
+  type        = string
+  default     = "120s"
+}
+
 # Step 1: API call BEFORE the wait
 data "oci_objectstorage_namespace" "before_sleep" {}
 
-# Step 2: Simulate a long operation (2 minutes)
+# Step 2: Simulate a long operation
 resource "time_sleep" "wait_for_token_refresh" {
-  create_duration = "120s"
+  create_duration = var.wait_duration
 
   triggers = {
     # Force recreation each time
@@ -49,18 +51,18 @@ resource "time_sleep" "wait_for_token_refresh" {
   }
 }
 
-# Step 3: API call AFTER the wait (uses refreshed token)
+# Step 3: API call after the wait
 data "oci_objectstorage_namespace" "after_sleep" {
   depends_on = [time_sleep.wait_for_token_refresh]
 }
 
 output "test_result" {
   value = <<-EOT
-    TOKEN REFRESH DEMO PASSED
+    NATIVE WIF LONG-RUN DEMO PASSED
 
     Before sleep: namespace = ${data.oci_objectstorage_namespace.before_sleep.namespace}
     After sleep:  namespace = ${data.oci_objectstorage_namespace.after_sleep.namespace}
 
-    The second API call succeeded after the simulated long-running operation.
+    The second API call succeeded after waiting ${var.wait_duration}.
   EOT
 }
