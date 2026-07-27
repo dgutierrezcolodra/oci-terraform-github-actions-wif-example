@@ -7,23 +7,29 @@ turn it into an API-key based deployment template.
 
 ## Component map
 
-- `github-oidc-token/`: composite action that uses official GitHub Script to
-  request a GitHub OIDC JWT once and write it atomically to a protected file.
-- `github-oidc-token-refresh/`: custom extension that refreshes only the
-  source JWT for the opt-in long-running Terraform workflow.
-- `terraform/`: OCI bucket validation example. The provider uses native
-  `WorkloadIdentityFederation` authentication.
-- `examples/long-running-refresh/`: Terraform workload used to exercise source
-  JWT refresh during a long operation.
-- `ansible-oci-wif/`: composite action/helper for the OCI Ansible collection.
-  It is intentionally a compatibility bridge, not a second WIF implementation.
+- `.github/actions/github-oidc-token/`: composite action that uses official
+  GitHub Script to request a GitHub OIDC JWT once and write it atomically to a
+  protected file.
+- `.github/actions/github-oidc-token-refresh/`: custom extension that refreshes
+  only the source JWT for the opt-in extended Terraform workflow.
+- `examples/terraform/standard/`: OCI bucket validation example. The provider
+  uses native `WorkloadIdentityFederation` authentication.
+- `examples/terraform/extended-runtime/`: Terraform workload used to exercise
+  source-JWT refresh during a long operation.
+- `.github/actions/ansible-oci-wif/`: composite action/helper for the OCI
+  Ansible collection. It is intentionally a compatibility bridge, not a second
+  WIF implementation.
+- `examples/ansible/namespace-validation/`: read-only Ansible Object Storage
+  namespace validation and its pinned collection requirements.
 - `tests/`: local-only test workspace. It must remain outside version control;
   do not add, commit, upload, or reference its files from tracked automation.
   Keep credential-handling checks deterministic and offline when running them
   locally.
 - `.github/workflows/`: executable examples. Current workflow display names are
-  `Demo Terraform Apply (Standard)` and `Demo Terraform Token Refresh`.
-- `README.md`, `SETUP.md`, and `terraform/README.md`: user-facing architecture,
+  `Demo Terraform Apply (Standard)`, `Demo Terraform Token Refresh`, and
+  `Demo Ansible WIF Namespace Validation`.
+- `README.md`, `SETUP.md`, `examples/terraform/standard/README.md`, and
+  `examples/terraform/extended-runtime/README.md`: user-facing architecture,
   setup, and Terraform guidance. `CONTRIBUTING.md` is the contribution policy.
 
 ## Authentication architecture
@@ -80,20 +86,22 @@ For the token-refresh demo, assert a real file timestamp change (not merely two
 
 ## Version and dependency policy
 
-- Terraform: support the version declared in `terraform/versions.tf` (currently
-  Terraform `>= 1.5.0`) and OCI provider `>= 8.24.0, < 9.0.0`. The minimum
-  provider version must be the version that introduced native WIF support.
-- OCI Python SDK: pin it in the Ansible workflow/requirements to a version
-  verified with `TokenExchangeSigner`; update its test coverage when changing
-  it.
-- Ansible: pin the `oracle.oci` collection in `ansible/requirements.yml` when
-  that integration is added. Do not silently float collection or SDK versions.
+- Terraform: support the version declared in
+  `examples/terraform/standard/versions.tf` (currently Terraform `>= 1.5.0`)
+  and OCI provider `>= 8.24.0, < 9.0.0`. The minimum provider version must be
+  the version that introduced native WIF support.
+- OCI Python SDK: pin it in the Ansible workflow to a version verified with
+  `TokenExchangeSigner`; update its test coverage when changing it.
+- Ansible: pin the `oracle.oci` collection in
+  `examples/ansible/namespace-validation/requirements.yml`. Do not silently
+  float collection or SDK versions.
 - When upstream OCI support changes, first verify whether native Ansible WIF is
   available. If it is, remove the bridge only after an end-to-end replacement
   is verified and documented.
 
 Terraform dependency locks are committed artifacts. After changing provider
-constraints, run `terraform -chdir=terraform init -backend=false -upgrade`,
+constraints, run
+`terraform -chdir=examples/terraform/standard init -backend=false -upgrade`,
 inspect the resulting `.terraform.lock.hcl`, and commit it with the constraint
 change. Repeat for every Terraform example that has its own lockfile. Never
 hand-edit lock hashes or leave a lock version below the declared minimum.
@@ -103,12 +111,15 @@ hand-edit lock hashes or leave a lock version below the declared minimum.
 Run the checks applicable to the changed files before committing:
 
 ```bash
-python3 -m py_compile github-oidc-token-refresh/main.py ansible-oci-wif/main.py
+python3 -m py_compile \
+  .github/actions/github-oidc-token-refresh/main.py \
+  .github/actions/ansible-oci-wif/main.py
 terraform fmt -check -recursive
-terraform -chdir=terraform init -backend=false
-terraform -chdir=terraform validate
-terraform -chdir=examples/long-running-refresh init -backend=false
-terraform -chdir=examples/long-running-refresh validate
+terraform -chdir=examples/terraform/standard init -backend=false
+terraform -chdir=examples/terraform/standard validate
+terraform -chdir=examples/terraform/extended-runtime init -backend=false
+terraform -chdir=examples/terraform/extended-runtime validate
+ansible-playbook --syntax-check examples/ansible/namespace-validation/playbook.yml
 git diff --check
 git status --short
 ```
@@ -137,7 +148,8 @@ before committing. Do not overwrite unrelated work in a dirty worktree.
 
 Whenever behavior changes, update the relevant user documentation in the same
 change: `README.md` for architecture, workflows, prerequisites, and secrets;
-`SETUP.md` for IAM/trust and GitHub configuration; `terraform/README.md` for
-Terraform-specific usage; and `CONTRIBUTING.md` when validation or contributor
-policy changes. Ensure names, versions, secrets, paths, and security claims
-match the executable files. Use placeholders only in docs and issues.
+`SETUP.md` for IAM/trust and GitHub configuration; the Terraform example
+READMEs for Terraform-specific usage; and `CONTRIBUTING.md` when validation or
+contributor policy changes. Ensure names, versions, secrets, paths, and
+security claims match the executable files. Use placeholders only in docs and
+issues.
