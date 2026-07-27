@@ -1,8 +1,8 @@
 # OCI setup for GitHub Actions native Terraform WIF
 
-*Current on 14 July 2026*
+*Current on 27 July 2026*
 
-This guide configures GitHub Actions as an external workload identity for OCI Terraform provider 8.22.0 or later. The runtime workflow is non-interactive and does not use OCI user API keys.
+This guide configures GitHub Actions as an external workload identity for OCI Terraform provider 8.24.0 or later. The runtime workflow is non-interactive and does not use OCI user API keys.
 
 ## Before you start
 
@@ -205,7 +205,7 @@ The saved values must include the GitHub issuer, GitHub JWKS endpoint, runtime O
 
 ## 6. Configure GitHub Actions
 
-Open **Settings → Secrets and variables → Actions** and create:
+Create the protected `oci-validation` GitHub environment, configure its approval rules, and add these environment secrets under **Settings → Environments → oci-validation**:
 
 | Name | Type | Value |
 |---|---|---|
@@ -215,18 +215,18 @@ Open **Settings → Secrets and variables → Actions** and create:
 | `OCI_REGION` | Secret or variable | Region such as `eu-madrid-1` |
 | `COMPARTMENT_ID` | Secret | Target compartment OCID |
 
-The examples currently reference all five values through the `secrets` context. If you store non-sensitive values as repository variables, change their workflow references from `secrets.NAME` to `vars.NAME`.
+The workflows reference all five values through the `secrets` context. `COMPARTMENT_ID` is always read from the protected `oci-validation` environment and is not a workflow-dispatch input. If you store non-sensitive values as repository variables, change their workflow references from `secrets.NAME` to `vars.NAME`.
 
 For repositories migrated from the original example, the workflows also accept the legacy combined `OIDC_CLIENT_IDENTIFIER` secret in `client_id:client_secret` format. `OCI_WIF_CLIENT_ID` and `OCI_WIF_CLIENT_SECRET` take precedence when both forms exist.
 
-The old `OCI_TENANCY` secret is no longer used. Provider 8.22.0 obtains the tenancy from the exchanged UPST.
+The old `OCI_TENANCY` secret is no longer used. Provider 8.24.0 obtains the tenancy from the exchanged UPST.
 
 ## 7. Verify with a plan
 
 Run **Demo Terraform Apply (Standard)** with action `plan`. A successful run should show:
 
 - The GitHub OIDC token file was created.
-- Terraform installed OCI provider 8.22.0 or a compatible 8.x release.
+- Terraform installed OCI provider 8.24.0 or a compatible 8.x release.
 - Terraform completed the OCI data-source reads and produced a plan.
 - No `~/.oci/config`, OCI private key, or OCI security-token file was created by the workflow.
 
@@ -282,13 +282,13 @@ Required provider variables are documented in [README.md](./README.md#terraform-
 
 ### Long run fails after the initial OCI token expires
 
-Enable `enable_token_refresh` and confirm that the token file modification time changes. GitHub OIDC JWTs expire roughly 5 minutes after issuance (observed behavior; GitHub does not document the lifetime officially), which is why the action only accepts refresh intervals between 1 and 4 minutes. Never print the token contents.
+Enable `enable_token_refresh`; **Demo Terraform Token Refresh** records the initial token-file modification time and fails unless the final time is strictly greater. GitHub OIDC JWTs expire roughly 5 minutes after issuance (observed behavior; GitHub does not document the lifetime officially), which is why the action only accepts refresh intervals between 1 and 4 minutes. Never print the token contents.
 
 ## References
 
 - [OCI JWT-to-UPST exchange](https://docs.oracle.com/en-us/iaas/Content/Identity/api-getstarted/json_web_token_exchange.htm)
 - [Oracle Core Technology blog: WIF with Microsoft Entra ID and Keycloak](https://blogs.oracle.com/coretec/oci-workload-identity-federation-wif-with-microsoft-entra-id-applications-and-keycloak)
 - [OCI IdentityPropagationTrust model](https://docs.oracle.com/en-us/iaas/tools/python/latest/api/identity_domains/models/oci.identity_domains.models.IdentityPropagationTrust.html)
-- [OCI provider 8.22.0 WIF implementation](https://github.com/oracle/terraform-provider-oci/blob/v8.22.0/internal/provider/workload_identity_federation.go)
+- [OCI provider 8.24.0 WIF implementation](https://github.com/oracle/terraform-provider-oci/blob/v8.24.0/internal/provider/workload_identity_federation.go)
 - [GitHub OIDC reference](https://docs.github.com/en/actions/reference/security/oidc)
 - [GitHub OIDC discovery document](https://token.actions.githubusercontent.com/.well-known/openid-configuration)

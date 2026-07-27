@@ -2,7 +2,7 @@
 
 This root module creates one private Object Storage bucket and validates native OCI Workload Identity Federation authentication.
 
-The module requires OCI provider 8.22.0 or later. Authentication settings come from the GitHub workflow environment; no `~/.oci/config`, OCI API key, or externally generated OCI session token is used.
+The module requires OCI provider 8.24.0 or later. Authentication settings come from the GitHub workflow environment; no `~/.oci/config`, OCI API key, or externally generated OCI session token is used.
 
 ## Files
 
