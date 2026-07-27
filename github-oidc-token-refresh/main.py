@@ -59,6 +59,8 @@ def token_path() -> pathlib.Path:
 
 def daemon_pid_path(path: pathlib.Path) -> pathlib.Path:
     pid_path = path.parent / "refresh-daemon.pid"
+    if path == pid_path:
+        raise RuntimeError("INPUT_TOKEN_PATH basename is reserved for the refresh daemon PID")
     if pid_path.is_symlink() or pid_path.resolve() != pid_path:
         raise RuntimeError("Refresh daemon PID file must remain inside the token directory")
     return pid_path

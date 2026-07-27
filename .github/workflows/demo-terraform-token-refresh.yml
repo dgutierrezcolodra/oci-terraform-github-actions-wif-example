@@ -112,6 +112,7 @@ jobs:
 
           credential_directory="$RUNNER_TEMP/oci-wif"
           pid_file="$credential_directory/refresh-daemon.pid"
+          trap 'rm -rf -- "$credential_directory"' EXIT
 
           daemon_matches() {
             local daemon_command
@@ -127,7 +128,7 @@ jobs:
               line_count="$(wc -l < "$pid_file")"
               expected_command_suffix="$GITHUB_WORKSPACE/github-oidc-token-refresh/main.py --daemon --pid-file $pid_file_real"
               if [[ "$line_count" -eq 1 && "$daemon_pid" =~ ^[1-9][0-9]*$ ]] && daemon_matches; then
-                kill -TERM "$daemon_pid"
+                kill -TERM "$daemon_pid" 2>/dev/null || true
                 for _ in {1..50}; do
                   if ! kill -0 "$daemon_pid" 2>/dev/null; then
                     break
@@ -135,10 +136,8 @@ jobs:
                   sleep 0.1
                 done
                 if kill -0 "$daemon_pid" 2>/dev/null && daemon_matches; then
-                  kill -KILL "$daemon_pid"
+                  kill -KILL "$daemon_pid" 2>/dev/null || true
                 fi
               fi
             fi
           fi
-
-          rm -rf -- "$credential_directory"
