@@ -89,39 +89,25 @@ The GitHub issuer is:
 https://token.actions.githubusercontent.com
 ```
 
-The `sub` claim depends on the workflow context. With GitHub's default subject format, common values include:
+With GitHub's default subject format, a workflow running from `main` without a
+job-level environment has this subject:
 
 ```text
 repo:<owner>/<repository>:ref:refs/heads/main
-repo:<owner>/<repository>:environment:production
-repo:<owner>/<repository>:pull_request
 ```
 
-For this repository, a workflow dispatched from the migration branch has this subject:
-
-```text
-repo:dgutierrezcolodra/oci-terraform-github-actions-wif-example:ref:refs/heads/feature/native-terraform-wif
-```
-
-After merge, a workflow dispatched from `main` has this subject:
+For this repository, the existing trust uses:
 
 ```text
 repo:dgutierrezcolodra/oci-terraform-github-actions-wif-example:ref:refs/heads/main
 ```
 
-Use the exact repository name and ref, including case. If the job declares a GitHub environment, the environment replaces the ref in the default `sub`. If the organization or repository has customized its OIDC subject template, inspect the actual claims and configure the trust for that template instead.
-
-GitHub changes the default for repositories created after 15 July 2026 to an immutable subject that includes the owner and repository IDs:
-
-```text
-repo:<owner>@<owner-id>/<repository>@<repository-id>:ref:refs/heads/main
-```
-
-Repositories created before that date keep the previous format unless they opt in. A repository renamed or transferred after that date also moves to the immutable format. This repository currently uses the previous format (`use_immutable_subject` is `false`). Check the repository setting and, most importantly, the `sub` in an actual job token before creating the trust:
-
-```bash
-gh api repos/<owner>/<repository>/actions/oidc/customization/sub
-```
+Use the exact repository name and ref, including case. The three cloud jobs in
+this repository intentionally declare no GitHub environment and use no OIDC
+subject customization. A job-level environment would replace the ref in
+GitHub's default `sub`, so it would not match this trust. Real WIF executions
+must run from `main`; feature-branch runs are limited to offline validation
+until merged.
 
 ## 5. Create the Identity Propagation Trust
 
@@ -161,23 +147,9 @@ POST <DOMAIN_URL>/admin/v1/IdentityPropagationTrusts
 }
 ```
 
-The example authorizes `main`. To test the workflow from this feature branch before merge, temporarily add a second mapping to the same `impersonationServiceUsers` array:
-
-```json
-{
-  "rule": "sub eq 'repo:dgutierrezcolodra/oci-terraform-github-actions-wif-example:ref:refs/heads/feature/native-terraform-wif'",
-  "value": "<IDENTITY_DOMAIN_SERVICE_USER_ID>"
-}
-```
-
-Remove the feature-branch mapping after the branch is merged. For production deployments, a protected GitHub environment gives a more stable subject and allows GitHub approval rules:
-
-```json
-{
-  "rule": "sub eq 'repo:<owner>/<repository>:environment:production'",
-  "value": "<IDENTITY_DOMAIN_SERVICE_USER_ID>"
-}
-```
+The example authorizes only `main`. Do not add a temporary branch mapping or
+change the GitHub OIDC subject for this example. Merge and then dispatch the
+real WIF workflows from `main`.
 
 `clientClaimName` and `clientClaimValues` restrict the token audience. `impersonationServiceUsers` independently restricts which GitHub subjects may impersonate the service user. Both controls are intentional.
 
@@ -205,7 +177,7 @@ The saved values must include the GitHub issuer, GitHub JWKS endpoint, runtime O
 
 ## 6. Configure GitHub Actions
 
-Create the protected `oci-validation` GitHub environment, configure its approval rules, and add these environment secrets under **Settings → Environments → oci-validation**:
+Add these repository Actions secrets under **Settings → Secrets and variables → Actions**:
 
 | Name | Type | Value |
 |---|---|---|
@@ -215,9 +187,15 @@ Create the protected `oci-validation` GitHub environment, configure its approval
 | `OCI_REGION` | Secret or variable | Region such as `eu-madrid-1` |
 | `COMPARTMENT_ID` | Secret | Target compartment OCID |
 
-The workflows reference all five values through the `secrets` context. `COMPARTMENT_ID` is always read from the protected `oci-validation` environment and is not a workflow-dispatch input. If you store non-sensitive values as repository variables, change their workflow references from `secrets.NAME` to `vars.NAME`.
+The workflows reference all five values through the `secrets` context.
+`COMPARTMENT_ID` is a repository secret and is not a workflow-dispatch input,
+so a caller cannot redirect an apply to an arbitrary compartment. The jobs do
+not declare a GitHub environment and therefore have no Environment approval
+gate. `apply-and-destroy` remains an explicit manual workflow choice. If you
+store non-sensitive values as repository variables, change their workflow
+references from `secrets.NAME` to `vars.NAME`.
 
-For repositories migrated from the original example, the workflows also accept the legacy combined `OIDC_CLIENT_IDENTIFIER` secret in `client_id:client_secret` format. `OCI_WIF_CLIENT_ID` and `OCI_WIF_CLIENT_SECRET` take precedence when both forms exist.
+For repositories migrated from the original example, only the Terraform workflows also accept the legacy combined `OIDC_CLIENT_IDENTIFIER` secret in `client_id:client_secret` format. `OCI_WIF_CLIENT_ID` and `OCI_WIF_CLIENT_SECRET` take precedence when both forms exist. The Ansible workflow requires the separate credentials.
 
 The old `OCI_TENANCY` secret is no longer used. Provider 8.24.0 obtains the tenancy from the exchanged UPST.
 
@@ -225,7 +203,8 @@ The standard Terraform and Ansible workflows obtain their source JWT once throug
 
 ## 7. Verify with a plan
 
-Run **Demo Terraform Apply (Standard)** with action `plan`. A successful run should show:
+From the `main` branch, run **Demo Terraform Apply (Standard)** with action
+`plan`. A successful run should show:
 
 - The GitHub OIDC token file was created.
 - Terraform installed OCI provider 8.24.0 or a compatible 8.x release.
@@ -236,7 +215,10 @@ Run `apply-and-destroy` only after the plan succeeds. It creates and removes the
 
 ## 8. Verify Ansible collection access
 
-The **Demo Ansible WIF Namespace Validation** workflow is a manual, read-only check that runs in the protected `oci-validation` GitHub environment. Add that environment and configure the same `OCI_WIF_CLIENT_ID`, `OCI_WIF_CLIENT_SECRET`, `DOMAIN_BASE_URL`, and `OCI_REGION` secrets described above; protect it with the approval rules appropriate for your deployment.
+From the `main` branch, run **Demo Ansible WIF Namespace Validation** as a
+manual, read-only check. It uses the same repository Actions secrets
+`OCI_WIF_CLIENT_ID`, `OCI_WIF_CLIENT_SECRET`, `DOMAIN_BASE_URL`, and
+`OCI_REGION` described above.
 
 `oracle.oci` does not consume the OCI Terraform provider's native WIF configuration directly. The workflow uses the local `ansible-oci-wif/` bridge only for Ansible: it exchanges the GitHub OIDC token for ephemeral security-token credentials used by the collection's namespace facts module. This is not an OCI API-key fallback, and no user API key or `~/.oci/config` is used.
 
@@ -256,11 +238,16 @@ GitHub JWTs are also short-lived. For a Terraform process that can exceed the OC
 
 Do not externally replace the OCI UPST or private key. Those values are managed together inside the provider.
 
+The refresh action stores its daemon PID in a protected file beside the source JWT. The token-refresh workflow validates that file and the daemon command before stopping the exact process in an always-run cleanup, then removes the credential directory. The standard Terraform workflow also removes its source-JWT directory independently of plan, apply, or destroy success.
+
 ## Troubleshooting
 
 ### No matching impersonation rule
 
-Decode the current GitHub JWT payload without logging the complete token. Compare its `iss`, `aud`, and `sub` with the trust. Repository names, refs, and environments must match exactly.
+Decode the current GitHub JWT payload without logging the complete token.
+Compare its `iss`, `aud`, and `sub` with the trust. Confirm the workflow ran
+from `main`, the repository name and ref match exactly, and the job has no
+`environment:` declaration.
 
 ### No unique trust
 

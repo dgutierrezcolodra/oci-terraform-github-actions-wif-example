@@ -13,7 +13,6 @@ jobs:
   terraform_token_refresh:
     name: Terraform Token Refresh Demo
     runs-on: ubuntu-latest
-    environment: oci-validation
     permissions:
       id-token: write
       contents: read
@@ -34,7 +33,7 @@ jobs:
       - name: Create refreshable GitHub OIDC token file
         uses: ./github-oidc-token-refresh
         with:
-          refresh_interval_minutes: "3"
+          refresh_interval_minutes: "1"
 
       - name: Export OCI WIF configuration
         shell: bash
@@ -96,7 +95,50 @@ jobs:
             exit 1
           fi
 
-      - name: Cleanup
+      - name: Terraform Destroy (cleanup)
         if: always()
         working-directory: examples/long-running-refresh
         run: terraform destroy -auto-approve || true
+
+      - name: Stop OIDC refresh daemon and remove credentials
+        id: cleanup_oidc_refresh
+        if: always()
+        shell: bash
+        run: |
+          if [[ -z "${RUNNER_TEMP:-}" || "$RUNNER_TEMP" == "/" ]]; then
+            echo "RUNNER_TEMP is not a safe cleanup root" >&2
+            exit 1
+          fi
+
+          credential_directory="$RUNNER_TEMP/oci-wif"
+          pid_file="$credential_directory/refresh-daemon.pid"
+
+          daemon_matches() {
+            local daemon_command
+            daemon_command="$(ps -ww -p "$daemon_pid" -o command= 2>/dev/null || true)"
+            [[ "$daemon_command" == *"$expected_command_suffix" ]]
+          }
+
+          if [[ -d "$credential_directory" && ! -L "$credential_directory" && -f "$pid_file" && ! -L "$pid_file" ]]; then
+            credential_directory_real="$(realpath "$credential_directory")"
+            pid_file_real="$(realpath "$pid_file")"
+            if [[ "$pid_file_real" == "$credential_directory_real/refresh-daemon.pid" ]]; then
+              daemon_pid="$(<"$pid_file")"
+              line_count="$(wc -l < "$pid_file")"
+              expected_command_suffix="$GITHUB_WORKSPACE/github-oidc-token-refresh/main.py --daemon --pid-file $pid_file_real"
+              if [[ "$line_count" -eq 1 && "$daemon_pid" =~ ^[1-9][0-9]*$ ]] && daemon_matches; then
+                kill -TERM "$daemon_pid"
+                for _ in {1..50}; do
+                  if ! kill -0 "$daemon_pid" 2>/dev/null; then
+                    break
+                  fi
+                  sleep 0.1
+                done
+                if kill -0 "$daemon_pid" 2>/dev/null && daemon_matches; then
+                  kill -KILL "$daemon_pid"
+                fi
+              fi
+            fi
+          fi
+
+          rm -rf -- "$credential_directory"

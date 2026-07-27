@@ -57,11 +57,13 @@ Create these repository secrets:
 | `OCI_WIF_CLIENT_SECRET` | Client secret of the OCI token-exchange application |
 | `DOMAIN_BASE_URL` | OCI Identity Domain URL |
 | `OCI_REGION` | OCI region, for example `eu-madrid-1` |
-| `COMPARTMENT_ID` | Protected `oci-validation` environment secret for the target compartment OCID |
+| `COMPARTMENT_ID` | Repository Actions secret for the target compartment OCID |
 
-For migration compatibility, the workflows also accept the original combined `OIDC_CLIENT_IDENTIFIER` secret in `client_id:client_secret` format. The separate `OCI_WIF_*` secrets take precedence.
+For migration compatibility, only the Terraform workflows also accept the original combined `OIDC_CLIENT_IDENTIFIER` secret in `client_id:client_secret` format. The separate `OCI_WIF_*` secrets take precedence. The Ansible workflow requires the separate `OCI_WIF_CLIENT_ID` and `OCI_WIF_CLIENT_SECRET` secrets.
 
-The tenancy OCID is not required by the provider's WIF configuration. The provider obtains the principal and tenancy context from the OCI token. Terraform jobs read `COMPARTMENT_ID` only from the protected `oci-validation` environment; a workflow input cannot redirect an apply to another compartment.
+All five values are repository Actions secrets. The tenancy OCID is not required by the provider's WIF configuration; the provider obtains the principal and tenancy context from the OCI token. Terraform jobs read `COMPARTMENT_ID` only from the `secrets` context, and a workflow input cannot redirect an apply to another compartment.
+
+The existing trust authorizes the default GitHub subject `repo:<owner>/<repository>:ref:refs/heads/main`. Real WIF executions must run from `main`. The jobs intentionally do not declare a GitHub environment or customize the OIDC subject, because either would change the subject and stop that trust from matching. There is no Environment approval gate in this example; `apply-and-destroy` remains an explicit manual workflow choice and uses only the fixed repository secret for its compartment.
 
 ## Terraform configuration
 
@@ -97,9 +99,9 @@ OCI_TOKEN_EXCHANGE_SUBJECT_TOKEN_TYPE=jwt
 
 1. Fork the repository and complete [SETUP.md](./SETUP.md).
 2. Add the GitHub secrets listed above.
-3. Open **Actions** and select **Demo Terraform Apply (Standard)**.
+3. Open **Actions**, select **Demo Terraform Apply (Standard)**, and choose the `main` branch.
 4. Run `plan` first.
-5. Optionally run `apply-and-destroy` to create a private validation bucket and remove it in the same workflow run. Both Terraform workflows run in the protected `oci-validation` GitHub environment.
+5. Optionally run the manual `apply-and-destroy` choice to create a private validation bucket and remove it in the same workflow run.
 
 The example intentionally keeps Terraform state local to the job. It does not support creating a bucket in one workflow run and destroying it in a later run. Use a remote backend for persistent infrastructure.
 
@@ -119,7 +121,7 @@ The provider rereads this file when it needs another OCI token exchange. It cont
 
 GitHub OIDC JWTs expire roughly five minutes after issuance (an observed lifetime that GitHub does not officially document). The action therefore accepts refresh intervals only from 1 through 4 minutes.
 
-The **Demo Terraform Token Refresh** workflow defaults to a two-minute smoke test. It records the initial source-JWT file modification time and fails unless the final time is strictly later. Set `wait_duration` to `65m` to exercise a complete OCI UPST renewal. The longer test consumes a GitHub runner for more than one hour.
+The **Demo Terraform Token Refresh** workflow uses a one-minute source-JWT refresh interval and defaults to a two-minute smoke test. It records the initial source-JWT file modification time and fails unless the final time is strictly later. The action records the detached refresh daemon's PID in a protected file beside the JWT; the workflow's always-run cleanup validates the PID file and daemon command, stops that exact process, and removes the credential directory. Set `wait_duration` to `65m` to exercise a complete OCI UPST renewal. The longer test consumes a GitHub runner for more than one hour.
 
 ## Repository structure
 
@@ -151,13 +153,14 @@ The **Demo Terraform Token Refresh** workflow defaults to a two-minute smoke tes
 - Do not use `sub eq *` in production.
 - The runtime OAuth application must not have Identity Domain Administrator privileges.
 - The JWT file is written atomically with mode `0600` under the runner temporary directory.
+- Terraform workflows remove the JWT directory in an independent always-run cleanup step.
 - The workflow never writes an OCI UPST, OCI private key, or client secret to logs.
-- Use GitHub environments and environment protection rules for production deployments.
+- Run real WIF workflows from `main` so their default ref subject matches the trust.
 - Give the service user only the OCI permissions required by the Terraform module.
 
 ## Ansible collection validation
 
-Run **Demo Ansible WIF Namespace Validation** manually to verify read-only Object Storage namespace access. Its job uses the protected `oci-validation` environment and the same `OCI_WIF_CLIENT_ID`, `OCI_WIF_CLIENT_SECRET`, `DOMAIN_BASE_URL`, and `OCI_REGION` secrets as the Terraform workflows.
+Run **Demo Ansible WIF Namespace Validation** manually from `main` to verify read-only Object Storage namespace access. Its job uses the same repository Actions secrets—`OCI_WIF_CLIENT_ID`, `OCI_WIF_CLIENT_SECRET`, `DOMAIN_BASE_URL`, and `OCI_REGION`—as the Terraform workflows.
 
 The `oracle.oci` collection does not directly support the provider's native WIF configuration. This repository therefore uses `ansible-oci-wif/` as the Oracle SDK **Ansible-only compatibility bridge**: it exchanges the one-shot GitHub OIDC token and writes short-lived security-token credentials only under the runner temporary directory. The workflow deletes those credentials in its always-run cleanup step. It does not use an OCI API-key fallback.
 

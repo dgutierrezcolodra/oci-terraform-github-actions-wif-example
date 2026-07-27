@@ -25,3 +25,7 @@ OCI_TOKEN_EXCHANGE_SUBJECT_TOKEN_TYPE=jwt
 ```
 
 Use the included GitHub workflow to populate these values. For local validation, provide a valid external JWT file and matching OCI Identity Propagation Trust before running `terraform plan`.
+
+The standard and long-running example workflows remove their protected source-JWT directory in an independent always-run cleanup. The long-running workflow also validates and stops the exact refresh daemon recorded by `github-oidc-token-refresh/` before removing that directory.
+
+The existing trust matches `repo:<owner>/<repository>:ref:refs/heads/main`, so real WIF executions must run from `main`. The workflows use repository Actions secrets and intentionally declare no GitHub environment, preserving the default ref subject.

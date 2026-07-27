@@ -57,6 +57,13 @@ def token_path() -> pathlib.Path:
     return resolved_path
 
 
+def daemon_pid_path(path: pathlib.Path) -> pathlib.Path:
+    pid_path = path.parent / "refresh-daemon.pid"
+    if pid_path.is_symlink() or pid_path.resolve() != pid_path:
+        raise RuntimeError("Refresh daemon PID file must remain inside the token directory")
+    return pid_path
+
+
 def oidc_url(audience: str) -> str:
     parsed = urllib.parse.urlsplit(required_env("ACTIONS_ID_TOKEN_REQUEST_URL"))
     query = dict(urllib.parse.parse_qsl(parsed.query, keep_blank_values=True))
@@ -162,9 +169,11 @@ def refresh_forever(path: pathlib.Path, audience: str, interval_minutes: int) ->
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--daemon", action="store_true")
+    parser.add_argument("--pid-file")
     args = parser.parse_args()
 
     path = token_path()
+    pid_path = daemon_pid_path(path)
     audience = os.environ.get("INPUT_AUDIENCE", "https://cloud.oracle.com").strip()
     if not audience:
         raise RuntimeError("INPUT_AUDIENCE cannot be empty")
@@ -180,6 +189,11 @@ def main() -> None:
         )
 
     if args.daemon:
+        if not args.pid_file:
+            raise RuntimeError("Refresh daemon requires its protected PID file path")
+        configured_pid_path = pathlib.Path(args.pid_file)
+        if not configured_pid_path.is_absolute() or configured_pid_path.resolve() != pid_path:
+            raise RuntimeError("Refresh daemon PID file must remain inside the token directory")
         refresh_forever(path, audience, interval)
         return
 
@@ -190,14 +204,30 @@ def main() -> None:
 
     refresh_enabled = os.environ.get("INPUT_ENABLE_TOKEN_REFRESH", "false").lower() == "true"
     if refresh_enabled:
-        subprocess.Popen(
-            [sys.executable, str(pathlib.Path(__file__).resolve()), "--daemon"],
+        daemon = subprocess.Popen(
+            [
+                sys.executable,
+                str(pathlib.Path(__file__).resolve()),
+                "--daemon",
+                "--pid-file",
+                str(pid_path),
+            ],
             env=os.environ.copy(),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
+        try:
+            atomic_write(pid_path, f"{daemon.pid}\n")
+        except BaseException:
+            daemon.terminate()
+            try:
+                daemon.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                daemon.kill()
+                daemon.wait(timeout=5)
+            raise
         print(f"GitHub OIDC token-file refresh enabled every {interval} minutes")
 
 

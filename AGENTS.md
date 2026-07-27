@@ -52,18 +52,21 @@ natively; never reuse its generated files outside the runner/job.
 - Mask secrets before shell use. Do not use shell tracing while credentials are
   in scope, and never print a config file, token, JWT payload, or private key.
 - Keep the Identity Propagation Trust restrictive: exact issuer, audience, and
-  GitHub subject/environment. Never use `sub eq *` for a production trust.
+  the existing `repo:<owner>/<repository>:ref:refs/heads/main` subject. Do not
+  add a job-level GitHub environment or OIDC subject customization; either
+  would stop the existing trust from matching. Never use `sub eq *`.
 - Runtime token-exchange clients must have no Identity Domain administrator
   role. OCI policies must be least privilege.
-- `apply` and `destroy` must run only in a protected GitHub Environment (the
-  intended environment is `oci-validation` unless deliberately renamed), with
-  approval rules and the OCI secrets scoped to that environment. A manual input
-  must not let a caller redirect an apply to an arbitrary compartment.
+- Real WIF executions must run from `main` to match the trust. `apply` and
+  `destroy` remain manual-only operations, and the OCI values are repository
+  Actions secrets. A manual input must not let a caller redirect an apply to an
+  arbitrary compartment.
 
 ## GitHub configuration and workflow practice
 
-Expected GitHub secrets are `OCI_WIF_CLIENT_ID`, `OCI_WIF_CLIENT_SECRET`,
-`DOMAIN_BASE_URL`, `OCI_REGION`, and `COMPARTMENT_ID`. The legacy
+Expected repository Actions secrets are `OCI_WIF_CLIENT_ID`,
+`OCI_WIF_CLIENT_SECRET`, `DOMAIN_BASE_URL`, `OCI_REGION`, and
+`COMPARTMENT_ID`. The legacy
 `OIDC_CLIENT_IDENTIFIER` (`client_id:client_secret`) is migration-only; do not
 add new use of it. `id-token: write` and `contents: read` are the normal job
 permissions. Add no broader default permissions.

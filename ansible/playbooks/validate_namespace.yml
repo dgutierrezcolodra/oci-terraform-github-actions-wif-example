@@ -9,6 +9,12 @@
       register: namespace_result
       no_log: true
 
-    - name: Show the namespace
+    - name: Validate that the namespace lookup returned a value
+      ansible.builtin.assert:
+        that:
+          - (namespace_result.namespace | default('') | string | trim | length) > 0
+      no_log: true
+
+    - name: Report successful namespace access
       ansible.builtin.debug:
-        msg: "{{ namespace_result.namespace }}"
+        msg: Object Storage namespace access validated successfully.

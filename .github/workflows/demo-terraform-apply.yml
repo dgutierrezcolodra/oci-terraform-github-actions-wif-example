@@ -27,7 +27,6 @@ jobs:
   terraform_oci:
     name: Terraform ${{ github.event.inputs.action || 'plan' }}
     runs-on: ubuntu-latest
-    environment: oci-validation
     permissions:
       id-token: write # Required for OIDC token
       contents: read
@@ -103,3 +102,8 @@ jobs:
         if: always() && github.event.inputs.action == 'apply-and-destroy'
         working-directory: terraform
         run: terraform destroy -auto-approve
+
+      - name: Remove GitHub OIDC credentials
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/oci-wif"

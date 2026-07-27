@@ -7,7 +7,6 @@ jobs:
   validate_namespace:
     name: Validate OCI namespace access through WIF
     runs-on: ubuntu-latest
-    environment: oci-validation
     permissions:
       contents: read
       id-token: write
@@ -17,10 +16,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.11"
 
@@ -39,7 +38,7 @@ jobs:
         with:
           audience: https://cloud.oracle.com
 
-      - name: Export OCI WIF configuration
+      - name: Validate OCI WIF configuration
         shell: bash
         env:
           WIF_DOMAIN_URL: ${{ secrets.DOMAIN_BASE_URL }}
@@ -52,14 +51,13 @@ jobs:
           fi
           echo "::add-mask::$WIF_CLIENT_ID"
           echo "::add-mask::$WIF_CLIENT_SECRET"
-          {
-            echo "OCI_TOKEN_EXCHANGE_DOMAIN_URL=$WIF_DOMAIN_URL"
-            echo "OCI_TOKEN_EXCHANGE_CLIENT_ID=$WIF_CLIENT_ID"
-            echo "OCI_TOKEN_EXCHANGE_CLIENT_SECRET=$WIF_CLIENT_SECRET"
-          } >> "$GITHUB_ENV"
 
       - name: Create OCI Ansible WIF credentials
         uses: ./ansible-oci-wif
+        env:
+          OCI_TOKEN_EXCHANGE_DOMAIN_URL: ${{ secrets.DOMAIN_BASE_URL }}
+          OCI_TOKEN_EXCHANGE_CLIENT_ID: ${{ secrets.OCI_WIF_CLIENT_ID }}
+          OCI_TOKEN_EXCHANGE_CLIENT_SECRET: ${{ secrets.OCI_WIF_CLIENT_SECRET }}
 
       - name: Read the Object Storage namespace
         shell: bash
