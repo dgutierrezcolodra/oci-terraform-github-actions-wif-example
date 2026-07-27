@@ -1,5 +1,5 @@
 name: GitHub OIDC token refresh
-description: Keep a protected GitHub OIDC JWT file fresh for long-running OCI Terraform operations.
+description: Keep a protected GitHub OIDC JWT file fresh for extended OCI WIF operations.
 
 inputs:
   audience:

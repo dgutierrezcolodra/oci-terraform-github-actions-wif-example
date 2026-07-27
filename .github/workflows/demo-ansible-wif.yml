@@ -34,7 +34,7 @@ jobs:
           echo "$RUNNER_TEMP/oci-ansible-wif-venv/bin" >> "$GITHUB_PATH"
 
       - name: Create GitHub OIDC token file
-        uses: ./github-oidc-token
+        uses: ./.github/actions/github-oidc-token
         with:
           audience: https://cloud.oracle.com
 
@@ -53,7 +53,7 @@ jobs:
           echo "::add-mask::$WIF_CLIENT_SECRET"
 
       - name: Create OCI Ansible WIF credentials
-        uses: ./ansible-oci-wif
+        uses: ./.github/actions/ansible-oci-wif
         env:
           OCI_TOKEN_EXCHANGE_DOMAIN_URL: ${{ secrets.DOMAIN_BASE_URL }}
           OCI_TOKEN_EXCHANGE_CLIENT_ID: ${{ secrets.CLIENT_ID }}

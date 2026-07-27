@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write refreshable GitHub OIDC token material for OCI Terraform WIF.
+"""Write refreshable GitHub OIDC token material for OCI WIF operations.
 
 This action never calls OCI and never creates an OCI UPST or RSA key. The OCI
 Terraform provider owns those values so token and proof-of-possession key
