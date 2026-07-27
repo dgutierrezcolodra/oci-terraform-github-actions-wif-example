@@ -23,19 +23,17 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v4
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: "1.15.4"
 
       - name: Create refreshable GitHub OIDC token file
-        uses: ./github-oidc-token
+        uses: ./github-oidc-token-refresh
         with:
-          audience: https://cloud.oracle.com
-          enable_token_refresh: true
-          refresh_interval_minutes: 1
+          refresh_interval_minutes: "1"
 
       - name: Export OCI WIF configuration
         shell: bash
@@ -70,8 +68,8 @@ jobs:
 
       - name: Show initial token timestamp
         run: |
-          echo "=== Initial token timestamp ==="
-          stat "$OCI_WORKLOAD_IDENTITY_TOKEN_PATH"
+          initial_token_mtime="$(stat -c %Y "$OCI_WORKLOAD_IDENTITY_TOKEN_PATH")"
+          echo "INITIAL_TOKEN_MTIME=$initial_token_mtime" >> "$GITHUB_ENV"
 
       - name: Terraform Init
         working-directory: examples/long-running-refresh
@@ -91,10 +89,55 @@ jobs:
 
       - name: Show final token timestamp
         run: |
-          echo "=== Final token timestamp ==="
-          stat "$OCI_WORKLOAD_IDENTITY_TOKEN_PATH"
+          final_token_mtime="$(stat -c %Y "$OCI_WORKLOAD_IDENTITY_TOKEN_PATH")"
+          if (( final_token_mtime <= INITIAL_TOKEN_MTIME )); then
+            echo "GitHub OIDC token file was not refreshed during Terraform apply" >&2
+            exit 1
+          fi
 
-      - name: Cleanup
+      - name: Terraform Destroy (cleanup)
         if: always()
         working-directory: examples/long-running-refresh
         run: terraform destroy -auto-approve || true
+
+      - name: Stop OIDC refresh daemon and remove credentials
+        id: cleanup_oidc_refresh
+        if: always()
+        shell: bash
+        run: |
+          if [[ -z "${RUNNER_TEMP:-}" || "$RUNNER_TEMP" == "/" ]]; then
+            echo "RUNNER_TEMP is not a safe cleanup root" >&2
+            exit 1
+          fi
+
+          credential_directory="$RUNNER_TEMP/oci-wif"
+          pid_file="$credential_directory/refresh-daemon.pid"
+          trap 'rm -rf -- "$credential_directory"' EXIT
+
+          daemon_matches() {
+            local daemon_command
+            daemon_command="$(ps -ww -p "$daemon_pid" -o command= 2>/dev/null || true)"
+            [[ "$daemon_command" == *"$expected_command_suffix" ]]
+          }
+
+          if [[ -d "$credential_directory" && ! -L "$credential_directory" && -f "$pid_file" && ! -L "$pid_file" ]]; then
+            credential_directory_real="$(realpath "$credential_directory")"
+            pid_file_real="$(realpath "$pid_file")"
+            if [[ "$pid_file_real" == "$credential_directory_real/refresh-daemon.pid" ]]; then
+              daemon_pid="$(<"$pid_file")"
+              line_count="$(wc -l < "$pid_file")"
+              expected_command_suffix="$GITHUB_WORKSPACE/github-oidc-token-refresh/main.py --daemon --pid-file $pid_file_real"
+              if [[ "$line_count" -eq 1 && "$daemon_pid" =~ ^[1-9][0-9]*$ ]] && daemon_matches; then
+                kill -TERM "$daemon_pid" 2>/dev/null || true
+                for _ in {1..50}; do
+                  if ! kill -0 "$daemon_pid" 2>/dev/null; then
+                    break
+                  fi
+                  sleep 0.1
+                done
+                if kill -0 "$daemon_pid" 2>/dev/null && daemon_matches; then
+                  kill -KILL "$daemon_pid" 2>/dev/null || true
+                fi
+              fi
+            fi
+          fi

@@ -1,0 +1,34 @@
+name: GitHub OIDC token refresh
+description: Keep a protected GitHub OIDC JWT file fresh for long-running OCI Terraform operations.
+
+inputs:
+  audience:
+    description: Audience requested in the GitHub OIDC JWT.
+    required: false
+    default: https://cloud.oracle.com
+  token_path:
+    description: Optional absolute output path. Defaults to RUNNER_TEMP/oci-wif/github-oidc.jwt.
+    required: false
+    default: ""
+  refresh_interval_minutes:
+    description: Minutes between GitHub OIDC JWT refreshes. Accepted range is 1-4.
+    required: false
+    default: "3"
+
+outputs:
+  token_path:
+    description: Absolute path containing the GitHub OIDC JWT.
+    value: ${{ steps.token.outputs.token_path }}
+
+runs:
+  using: composite
+  steps:
+    - id: token
+      name: Write and refresh GitHub OIDC token file
+      shell: bash
+      run: python3 "$GITHUB_ACTION_PATH/main.py"
+      env:
+        INPUT_AUDIENCE: ${{ inputs.audience }}
+        INPUT_TOKEN_PATH: ${{ inputs.token_path }}
+        INPUT_ENABLE_TOKEN_REFRESH: "true"
+        INPUT_REFRESH_INTERVAL_MINUTES: ${{ inputs.refresh_interval_minutes }}

@@ -1,8 +1,8 @@
 # OCI setup for GitHub Actions native Terraform WIF
 
-*Current on 14 July 2026*
+*Current on 27 July 2026*
 
-This guide configures GitHub Actions as an external workload identity for OCI Terraform provider 8.22.0 or later. The runtime workflow is non-interactive and does not use OCI user API keys.
+This guide configures GitHub Actions as an external workload identity for OCI Terraform provider 8.24.0 or later. The runtime workflow is non-interactive and does not use OCI user API keys.
 
 ## Before you start
 
@@ -89,39 +89,25 @@ The GitHub issuer is:
 https://token.actions.githubusercontent.com
 ```
 
-The `sub` claim depends on the workflow context. With GitHub's default subject format, common values include:
+With GitHub's default subject format, a workflow running from `main` without a
+job-level environment has this subject:
 
 ```text
 repo:<owner>/<repository>:ref:refs/heads/main
-repo:<owner>/<repository>:environment:production
-repo:<owner>/<repository>:pull_request
 ```
 
-For this repository, a workflow dispatched from the migration branch has this subject:
-
-```text
-repo:dgutierrezcolodra/oci-terraform-github-actions-wif-example:ref:refs/heads/feature/native-terraform-wif
-```
-
-After merge, a workflow dispatched from `main` has this subject:
+For this repository, the existing trust uses:
 
 ```text
 repo:dgutierrezcolodra/oci-terraform-github-actions-wif-example:ref:refs/heads/main
 ```
 
-Use the exact repository name and ref, including case. If the job declares a GitHub environment, the environment replaces the ref in the default `sub`. If the organization or repository has customized its OIDC subject template, inspect the actual claims and configure the trust for that template instead.
-
-GitHub changes the default for repositories created after 15 July 2026 to an immutable subject that includes the owner and repository IDs:
-
-```text
-repo:<owner>@<owner-id>/<repository>@<repository-id>:ref:refs/heads/main
-```
-
-Repositories created before that date keep the previous format unless they opt in. A repository renamed or transferred after that date also moves to the immutable format. This repository currently uses the previous format (`use_immutable_subject` is `false`). Check the repository setting and, most importantly, the `sub` in an actual job token before creating the trust:
-
-```bash
-gh api repos/<owner>/<repository>/actions/oidc/customization/sub
-```
+Use the exact repository name and ref, including case. The three cloud jobs in
+this repository intentionally declare no GitHub environment and use no OIDC
+subject customization. A job-level environment would replace the ref in
+GitHub's default `sub`, so it would not match this trust. Real WIF executions
+must run from `main`; feature-branch runs are limited to offline validation
+until merged.
 
 ## 5. Create the Identity Propagation Trust
 
@@ -161,23 +147,9 @@ POST <DOMAIN_URL>/admin/v1/IdentityPropagationTrusts
 }
 ```
 
-The example authorizes `main`. To test the workflow from this feature branch before merge, temporarily add a second mapping to the same `impersonationServiceUsers` array:
-
-```json
-{
-  "rule": "sub eq 'repo:dgutierrezcolodra/oci-terraform-github-actions-wif-example:ref:refs/heads/feature/native-terraform-wif'",
-  "value": "<IDENTITY_DOMAIN_SERVICE_USER_ID>"
-}
-```
-
-Remove the feature-branch mapping after the branch is merged. For production deployments, a protected GitHub environment gives a more stable subject and allows GitHub approval rules:
-
-```json
-{
-  "rule": "sub eq 'repo:<owner>/<repository>:environment:production'",
-  "value": "<IDENTITY_DOMAIN_SERVICE_USER_ID>"
-}
-```
+The example authorizes only `main`. Do not add a temporary branch mapping or
+change the GitHub OIDC subject for this example. Merge and then dispatch the
+real WIF workflows from `main`.
 
 `clientClaimName` and `clientClaimValues` restrict the token audience. `impersonationServiceUsers` independently restricts which GitHub subjects may impersonate the service user. Both controls are intentional.
 
@@ -205,7 +177,7 @@ The saved values must include the GitHub issuer, GitHub JWKS endpoint, runtime O
 
 ## 6. Configure GitHub Actions
 
-Open **Settings → Secrets and variables → Actions** and create:
+Add these repository Actions secrets under **Settings → Secrets and variables → Actions**:
 
 | Name | Type | Value |
 |---|---|---|
@@ -215,45 +187,67 @@ Open **Settings → Secrets and variables → Actions** and create:
 | `OCI_REGION` | Secret or variable | Region such as `eu-madrid-1` |
 | `COMPARTMENT_ID` | Secret | Target compartment OCID |
 
-The examples currently reference all five values through the `secrets` context. If you store non-sensitive values as repository variables, change their workflow references from `secrets.NAME` to `vars.NAME`.
+The workflows reference all five values through the `secrets` context.
+`COMPARTMENT_ID` is a repository secret and is not a workflow-dispatch input,
+so a caller cannot redirect an apply to an arbitrary compartment. The jobs do
+not declare a GitHub environment and therefore have no Environment approval
+gate. `apply-and-destroy` remains an explicit manual workflow choice. If you
+store non-sensitive values as repository variables, change their workflow
+references from `secrets.NAME` to `vars.NAME`.
 
-For repositories migrated from the original example, the workflows also accept the legacy combined `OIDC_CLIENT_IDENTIFIER` secret in `client_id:client_secret` format. `OCI_WIF_CLIENT_ID` and `OCI_WIF_CLIENT_SECRET` take precedence when both forms exist.
+For repositories migrated from the original example, only the Terraform workflows also accept the legacy combined `OIDC_CLIENT_IDENTIFIER` secret in `client_id:client_secret` format. `OCI_WIF_CLIENT_ID` and `OCI_WIF_CLIENT_SECRET` take precedence when both forms exist. The Ansible workflow requires the separate credentials.
 
-The old `OCI_TENANCY` secret is no longer used. Provider 8.22.0 obtains the tenancy from the exchanged UPST.
+The old `OCI_TENANCY` secret is no longer used. Provider 8.24.0 obtains the tenancy from the exchanged UPST.
+
+The standard Terraform and Ansible workflows obtain their source JWT once through `github-oidc-token/`. That action uses official `actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3` (`v9.0.0`), writes the JWT atomically below `RUNNER_TEMP`, exports only its path, and does not refresh it. `ansible-oci-wif/` remains the Oracle SDK compatibility bridge for the Ansible collection.
 
 ## 7. Verify with a plan
 
-Run **Demo Terraform Apply (Standard)** with action `plan`. A successful run should show:
+From the `main` branch, run **Demo Terraform Apply (Standard)** with action
+`plan`. A successful run should show:
 
 - The GitHub OIDC token file was created.
-- Terraform installed OCI provider 8.22.0 or a compatible 8.x release.
+- Terraform installed OCI provider 8.24.0 or a compatible 8.x release.
 - Terraform completed the OCI data-source reads and produced a plan.
 - No `~/.oci/config`, OCI private key, or OCI security-token file was created by the workflow.
 
 Run `apply-and-destroy` only after the plan succeeds. It creates and removes the validation bucket in the same job, while the local Terraform state is still available. Configure a remote backend before adapting this example to manage persistent infrastructure.
 
+## 8. Verify Ansible collection access
+
+From the `main` branch, run **Demo Ansible WIF Namespace Validation** as a
+manual, read-only check. It uses the same repository Actions secrets
+`OCI_WIF_CLIENT_ID`, `OCI_WIF_CLIENT_SECRET`, `DOMAIN_BASE_URL`, and
+`OCI_REGION` described above.
+
+`oracle.oci` does not consume the OCI Terraform provider's native WIF configuration directly. The workflow uses the local `ansible-oci-wif/` bridge only for Ansible: it exchanges the GitHub OIDC token for ephemeral security-token credentials used by the collection's namespace facts module. This is not an OCI API-key fallback, and no user API key or `~/.oci/config` is used.
+
 ## Long-running processes
 
 The provider renews the OCI UPST automatically and rotates the associated RSA key. It rereads `OCI_WORKLOAD_IDENTITY_TOKEN_PATH` when it needs another exchange.
 
-GitHub JWTs are also short-lived. For a Terraform process that can exceed the OCI UPST lifetime, enable the local action's source-token refresh:
+GitHub JWTs are also short-lived. For a Terraform process that can exceed the OCI UPST lifetime, use the custom `github-oidc-token-refresh/` extension to refresh the source token:
 
 ```yaml
 - name: Create refreshable GitHub OIDC token file
-  uses: ./github-oidc-token
+  uses: ./github-oidc-token-refresh
   with:
     audience: https://cloud.oracle.com
-    enable_token_refresh: true
     refresh_interval_minutes: 1
 ```
 
 Do not externally replace the OCI UPST or private key. Those values are managed together inside the provider.
 
+The refresh action stores its daemon PID in a protected file beside the source JWT. The token-refresh workflow validates that file and the daemon command before stopping the exact process in an always-run cleanup, then removes the credential directory. The standard Terraform workflow also removes its source-JWT directory independently of plan, apply, or destroy success.
+
 ## Troubleshooting
 
 ### No matching impersonation rule
 
-Decode the current GitHub JWT payload without logging the complete token. Compare its `iss`, `aud`, and `sub` with the trust. Repository names, refs, and environments must match exactly.
+Decode the current GitHub JWT payload without logging the complete token.
+Compare its `iss`, `aud`, and `sub` with the trust. Confirm the workflow ran
+from `main`, the repository name and ref match exactly, and the job has no
+`environment:` declaration.
 
 ### No unique trust
 
@@ -276,13 +270,13 @@ Required provider variables are documented in [README.md](./README.md#terraform-
 
 ### Long run fails after the initial OCI token expires
 
-Enable `enable_token_refresh` and confirm that the token file modification time changes. GitHub OIDC JWTs expire roughly 5 minutes after issuance (observed behavior; GitHub does not document the lifetime officially), which is why the action only accepts refresh intervals between 1 and 4 minutes. Never print the token contents.
+Use `github-oidc-token-refresh/` only for **Demo Terraform Token Refresh**, which records the initial token-file modification time and fails unless the final time is strictly greater. GitHub OIDC JWTs expire roughly 5 minutes after issuance (observed behavior; GitHub does not document the lifetime officially), which is why the extension accepts refresh intervals between 1 and 4 minutes. Never print the token contents.
 
 ## References
 
 - [OCI JWT-to-UPST exchange](https://docs.oracle.com/en-us/iaas/Content/Identity/api-getstarted/json_web_token_exchange.htm)
 - [Oracle Core Technology blog: WIF with Microsoft Entra ID and Keycloak](https://blogs.oracle.com/coretec/oci-workload-identity-federation-wif-with-microsoft-entra-id-applications-and-keycloak)
 - [OCI IdentityPropagationTrust model](https://docs.oracle.com/en-us/iaas/tools/python/latest/api/identity_domains/models/oci.identity_domains.models.IdentityPropagationTrust.html)
-- [OCI provider 8.22.0 WIF implementation](https://github.com/oracle/terraform-provider-oci/blob/v8.22.0/internal/provider/workload_identity_federation.go)
+- [OCI provider 8.24.0 WIF implementation](https://github.com/oracle/terraform-provider-oci/blob/v8.24.0/internal/provider/workload_identity_federation.go)
 - [GitHub OIDC reference](https://docs.github.com/en/actions/reference/security/oidc)
 - [GitHub OIDC discovery document](https://token.actions.githubusercontent.com/.well-known/openid-configuration)

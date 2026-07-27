@@ -11,10 +11,6 @@ on:
         options:
           - plan
           - apply-and-destroy
-      compartment_id:
-        description: "Compartment OCID (optional, uses secret if not provided)"
-        required: false
-        type: string
       bucket_name:
         description: "Bucket name (optional; a unique name is generated when empty)"
         required: false
@@ -36,16 +32,16 @@ jobs:
       contents: read
 
     env:
-      TF_VAR_compartment_id: ${{ github.event.inputs.compartment_id || secrets.COMPARTMENT_ID }}
+      TF_VAR_compartment_id: ${{ secrets.COMPARTMENT_ID }}
       TF_VAR_oci_region: ${{ secrets.OCI_REGION }}
       TF_VAR_bucket_name: ${{ github.event.inputs.bucket_name || format('terraform-wif-validation-{0}', github.run_id) }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v4
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: "1.15.4"
 
@@ -106,3 +102,8 @@ jobs:
         if: always() && github.event.inputs.action == 'apply-and-destroy'
         working-directory: terraform
         run: terraform destroy -auto-approve
+
+      - name: Remove GitHub OIDC credentials
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/oci-wif"

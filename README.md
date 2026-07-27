@@ -1,14 +1,14 @@
 # OCI Terraform Provider with Native WIF from GitHub Actions
 
-*Technical example current on 14 July 2026*
+*Technical example current on 27 July 2026*
 
-This repository shows how a GitHub Actions workflow can call Oracle Cloud Infrastructure (OCI) through OCI IAM Workload Identity Federation (WIF). It uses the native `WorkloadIdentityFederation` authentication added in OCI Terraform provider 8.22.0. No OCI user API key, browser login, generated OCI configuration file, or external UPST wrapper is required.
+This repository shows how a GitHub Actions workflow can call Oracle Cloud Infrastructure (OCI) through OCI IAM Workload Identity Federation (WIF). It uses the native `WorkloadIdentityFederation` authentication supported by OCI Terraform provider 8.24.0. No OCI user API key, browser login, generated OCI configuration file, or external UPST wrapper is required.
 
-## What changed in provider 8.22.0
+## Native WIF provider baseline
 
 The original version of this repository used provider 7.29 and a Python wrapper that created an RSA key, exchanged the GitHub JWT for an OCI UPST, and configured Terraform with `auth = "SecurityToken"`.
 
-Provider 8.22.0 now performs those operations itself:
+Provider 8.24.0 performs those operations itself:
 
 1. Terraform reads the GitHub OIDC JWT from a protected file.
 2. The provider generates an ephemeral RSA key pair.
@@ -16,7 +16,7 @@ Provider 8.22.0 now performs those operations itself:
 4. The provider signs OCI API requests with the matching private key.
 5. The provider renews the UPST and key together when required.
 
-The small local action in `github-oidc-token/` only obtains the GitHub JWT and writes it atomically. It never creates OCI credentials.
+The normal local action in `github-oidc-token/` uses official `actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3` (`v9.0.0`) to obtain the GitHub JWT. It writes the JWT atomically below `RUNNER_TEMP`, exports only its path, does not refresh it, and never creates OCI credentials. The standard Terraform and Ansible workflows use this one-shot action.
 
 ## Architecture
 
@@ -25,7 +25,7 @@ flowchart LR
     A[GitHub Actions]
     B[GitHub OIDC endpoint]
     C[JWT file]
-    D[OCI Terraform provider 8.22]
+    D[OCI Terraform provider 8.24]
     E[OCI Identity Domain]
     F[OCI resources]
 
@@ -45,7 +45,7 @@ Complete the one-time OCI configuration in [SETUP.md](./SETUP.md). You need:
 - An OCI Identity Domain confidential application for token exchange.
 - One active GitHub Identity Propagation Trust with exact audience and subject restrictions.
 - A GitHub Actions workflow with `id-token: write` permission.
-- OCI Terraform provider 8.22.0 or later in the 8.x series.
+- OCI Terraform provider 8.24.0 or later in the 8.x series.
 
 ## GitHub configuration
 
@@ -57,11 +57,13 @@ Create these repository secrets:
 | `OCI_WIF_CLIENT_SECRET` | Client secret of the OCI token-exchange application |
 | `DOMAIN_BASE_URL` | OCI Identity Domain URL |
 | `OCI_REGION` | OCI region, for example `eu-madrid-1` |
-| `COMPARTMENT_ID` | Target compartment OCID |
+| `COMPARTMENT_ID` | Repository Actions secret for the target compartment OCID |
 
-For migration compatibility, the workflows also accept the original combined `OIDC_CLIENT_IDENTIFIER` secret in `client_id:client_secret` format. The separate `OCI_WIF_*` secrets take precedence.
+For migration compatibility, only the Terraform workflows also accept the original combined `OIDC_CLIENT_IDENTIFIER` secret in `client_id:client_secret` format. The separate `OCI_WIF_*` secrets take precedence. The Ansible workflow requires the separate `OCI_WIF_CLIENT_ID` and `OCI_WIF_CLIENT_SECRET` secrets.
 
-The tenancy OCID is not required by the provider's WIF configuration. The provider obtains the principal and tenancy context from the OCI token.
+All five values are repository Actions secrets. The tenancy OCID is not required by the provider's WIF configuration; the provider obtains the principal and tenancy context from the OCI token. Terraform jobs read `COMPARTMENT_ID` only from the `secrets` context, and a workflow input cannot redirect an apply to another compartment.
+
+The existing trust authorizes the default GitHub subject `repo:<owner>/<repository>:ref:refs/heads/main`. Real WIF executions must run from `main`. The jobs intentionally do not declare a GitHub environment or customize the OIDC subject, because either would change the subject and stop that trust from matching. There is no Environment approval gate in this example; `apply-and-destroy` remains an explicit manual workflow choice and uses only the fixed repository secret for its compartment.
 
 ## Terraform configuration
 
@@ -70,7 +72,7 @@ terraform {
   required_providers {
     oci = {
       source  = "oracle/oci"
-      version = ">= 8.22.0, < 9.0.0"
+      version = ">= 8.24.0, < 9.0.0"
     }
   }
 }
@@ -97,22 +99,21 @@ OCI_TOKEN_EXCHANGE_SUBJECT_TOKEN_TYPE=jwt
 
 1. Fork the repository and complete [SETUP.md](./SETUP.md).
 2. Add the GitHub secrets listed above.
-3. Open **Actions** and select **Demo Terraform Apply (Standard)**.
+3. Open **Actions**, select **Demo Terraform Apply (Standard)**, and choose the `main` branch.
 4. Run `plan` first.
-5. Optionally run `apply-and-destroy` to create a private validation bucket and remove it in the same workflow run.
+5. Optionally run the manual `apply-and-destroy` choice to create a private validation bucket and remove it in the same workflow run.
 
 The example intentionally keeps Terraform state local to the job. It does not support creating a bucket in one workflow run and destroying it in a later run. Use a remote backend for persistent infrastructure.
 
 ## Long-running Terraform operations
 
-The OCI provider automatically renews its OCI UPST, but it cannot call GitHub to replace an expired source JWT. For a long Terraform process, the local action can refresh only the GitHub JWT file:
+The OCI provider automatically renews its OCI UPST, but it cannot call GitHub to replace an expired source JWT. For a long Terraform process, the custom `github-oidc-token-refresh/` extension can refresh only the GitHub JWT file:
 
 ```yaml
 - name: Create refreshable GitHub OIDC token file
-  uses: ./github-oidc-token
+  uses: ./github-oidc-token-refresh
   with:
     audience: https://cloud.oracle.com
-    enable_token_refresh: true
     refresh_interval_minutes: 1
 ```
 
@@ -120,7 +121,7 @@ The provider rereads this file when it needs another OCI token exchange. It cont
 
 GitHub OIDC JWTs expire roughly five minutes after issuance (an observed lifetime that GitHub does not officially document). The action therefore accepts refresh intervals only from 1 through 4 minutes.
 
-The **Demo Terraform Token Refresh** workflow defaults to a two-minute smoke test. Set `wait_duration` to `65m` to exercise a complete OCI UPST renewal. The longer test consumes a GitHub runner for more than one hour.
+The **Demo Terraform Token Refresh** workflow uses a one-minute source-JWT refresh interval and defaults to a two-minute smoke test. It records the initial source-JWT file modification time and fails unless the final time is strictly later. The action records the detached refresh daemon's PID in a protected file beside the JWT; the workflow's always-run cleanup validates the PID file and daemon command, stops that exact process, and removes the credential directory. Set `wait_duration` to `65m` to exercise a complete OCI UPST renewal. The longer test consumes a GitHub runner for more than one hour.
 
 ## Repository structure
 
@@ -128,9 +129,16 @@ The **Demo Terraform Token Refresh** workflow defaults to a two-minute smoke tes
 .
 ├── .github/workflows/
 │   ├── demo-terraform-apply.yml
+│   ├── demo-ansible-wif.yml
 │   └── demo-terraform-token-refresh.yml
+├── ansible/
+│   ├── playbooks/validate_namespace.yml
+│   └── requirements.yml
+├── ansible-oci-wif/
 ├── examples/long-running-refresh/
 ├── github-oidc-token/
+│   └── action.yml
+├── github-oidc-token-refresh/
 │   ├── action.yml
 │   └── main.py
 ├── terraform/
@@ -145,14 +153,21 @@ The **Demo Terraform Token Refresh** workflow defaults to a two-minute smoke tes
 - Do not use `sub eq *` in production.
 - The runtime OAuth application must not have Identity Domain Administrator privileges.
 - The JWT file is written atomically with mode `0600` under the runner temporary directory.
+- Terraform workflows remove the JWT directory in an independent always-run cleanup step.
 - The workflow never writes an OCI UPST, OCI private key, or client secret to logs.
-- Use GitHub environments and environment protection rules for production deployments.
+- Run real WIF workflows from `main` so their default ref subject matches the trust.
 - Give the service user only the OCI permissions required by the Terraform module.
+
+## Ansible collection validation
+
+Run **Demo Ansible WIF Namespace Validation** manually from `main` to verify read-only Object Storage namespace access. Its job uses the same repository Actions secrets—`OCI_WIF_CLIENT_ID`, `OCI_WIF_CLIENT_SECRET`, `DOMAIN_BASE_URL`, and `OCI_REGION`—as the Terraform workflows.
+
+The `oracle.oci` collection does not directly support the provider's native WIF configuration. This repository therefore uses `ansible-oci-wif/` as the Oracle SDK **Ansible-only compatibility bridge**: it exchanges the one-shot GitHub OIDC token and writes short-lived security-token credentials only under the runner temporary directory. The workflow deletes those credentials in its always-run cleanup step. It does not use an OCI API-key fallback.
 
 ## References
 
-- [OCI Terraform provider 8.23.0 changelog](https://github.com/oracle/terraform-provider-oci/blob/v8.23.0/CHANGELOG.md)
-- [OCI provider generic WIF implementation](https://github.com/oracle/terraform-provider-oci/blob/v8.23.0/internal/provider/workload_identity_federation.go)
+- [OCI Terraform provider 8.24.0 changelog](https://github.com/oracle/terraform-provider-oci/blob/v8.24.0/CHANGELOG.md)
+- [OCI provider generic WIF implementation](https://github.com/oracle/terraform-provider-oci/blob/v8.24.0/internal/provider/workload_identity_federation.go)
 - [OCI JWT-to-UPST exchange](https://docs.oracle.com/en-us/iaas/Content/Identity/api-getstarted/json_web_token_exchange.htm)
 - [GitHub OIDC token documentation](https://docs.github.com/en/actions/concepts/security/openid-connect)
 

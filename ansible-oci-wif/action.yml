@@ -1,0 +1,9 @@
+name: OCI Ansible WIF credentials
+description: Exchange a GitHub workload identity token for ephemeral OCI security-token credentials.
+
+runs:
+  using: composite
+  steps:
+    - name: Create OCI Ansible security-token credentials
+      shell: bash
+      run: python3 "$GITHUB_ACTION_PATH/main.py"
