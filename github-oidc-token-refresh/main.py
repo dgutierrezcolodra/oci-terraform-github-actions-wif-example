@@ -35,12 +35,26 @@ def required_env(name: str) -> str:
 
 
 def token_path() -> pathlib.Path:
+    runner_temp = pathlib.Path(required_env("RUNNER_TEMP")).resolve()
     configured = os.environ.get("INPUT_TOKEN_PATH", "").strip()
     if configured:
         path = pathlib.Path(configured).expanduser()
+        if not path.is_absolute():
+            raise RuntimeError("INPUT_TOKEN_PATH must be absolute")
     else:
-        path = pathlib.Path(required_env("RUNNER_TEMP")) / "oci-wif" / "github-oidc.jwt"
-    return path.resolve()
+        path = runner_temp / "oci-wif" / "github-oidc.jwt"
+    resolved_path = path.resolve()
+    try:
+        relative_path = resolved_path.relative_to(runner_temp)
+    except ValueError as exc:
+        raise RuntimeError(
+            "INPUT_TOKEN_PATH must be inside RUNNER_TEMP and not equal to RUNNER_TEMP"
+        ) from exc
+    if relative_path == pathlib.Path("."):
+        raise RuntimeError(
+            "INPUT_TOKEN_PATH must be inside RUNNER_TEMP and not equal to RUNNER_TEMP"
+        )
+    return resolved_path
 
 
 def oidc_url(audience: str) -> str:

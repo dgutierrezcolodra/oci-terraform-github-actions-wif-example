@@ -43,8 +43,34 @@ runs:
             throw new Error('token_path must be absolute')
           }
 
-          const tokenPath = configuredPath ||
-            path.join(runnerTemp, 'oci-wif', 'github-oidc.jwt')
+          const resolveWithExistingAncestors = (candidatePath) => {
+            let existingPath = path.resolve(candidatePath)
+            const missingParts = []
+            while (!fs.existsSync(existingPath)) {
+              const parentPath = path.dirname(existingPath)
+              if (parentPath === existingPath) {
+                throw new Error('Could not resolve token path')
+              }
+              missingParts.unshift(path.basename(existingPath))
+              existingPath = parentPath
+            }
+            return path.join(fs.realpathSync(existingPath), ...missingParts)
+          }
+
+          const resolvedRunnerTemp = resolveWithExistingAncestors(runnerTemp)
+          const candidateTokenPath = configuredPath ||
+            path.join(resolvedRunnerTemp, 'oci-wif', 'github-oidc.jwt')
+          const tokenPath = resolveWithExistingAncestors(candidateTokenPath)
+          const relativeTokenPath = path.relative(resolvedRunnerTemp, tokenPath)
+          if (
+            !relativeTokenPath ||
+            relativeTokenPath === '..' ||
+            relativeTokenPath.startsWith(`..${path.sep}`) ||
+            path.isAbsolute(relativeTokenPath)
+          ) {
+            throw new Error('token_path must be inside RUNNER_TEMP and not equal to RUNNER_TEMP')
+          }
+
           const tokenDirectory = path.dirname(tokenPath)
           fs.mkdirSync(tokenDirectory, { recursive: true, mode: 0o700 })
           fs.chmodSync(tokenDirectory, 0o700)
