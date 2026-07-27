@@ -16,8 +16,10 @@ turn it into an API-key based deployment template.
   JWT refresh during a long operation.
 - `ansible-oci-wif/`: composite action/helper for the OCI Ansible collection.
   It is intentionally a compatibility bridge, not a second WIF implementation.
-- `tests/`: unit tests for both local actions. Keep credential-handling tests
-  deterministic and offline.
+- `tests/`: local-only test workspace. It must remain outside version control;
+  do not add, commit, upload, or reference its files from tracked automation.
+  Keep credential-handling checks deterministic and offline when running them
+  locally.
 - `.github/workflows/`: executable examples. Current workflow display names are
   `Demo Terraform Apply (Standard)` and `Demo Terraform Token Refresh`.
 - `README.md`, `SETUP.md`, and `terraform/README.md`: user-facing architecture,
@@ -99,8 +101,7 @@ hand-edit lock hashes or leave a lock version below the declared minimum.
 Run the checks applicable to the changed files before committing:
 
 ```bash
-python3 -m py_compile github-oidc-token/main.py ansible-oci-wif/main.py tests/test_github_oidc_token.py tests/test_ansible_oci_wif.py
-python3 -m unittest discover -s tests -v
+python3 -m py_compile github-oidc-token/main.py ansible-oci-wif/main.py
 terraform fmt -check -recursive
 terraform -chdir=terraform init -backend=false
 terraform -chdir=terraform validate
@@ -109,6 +110,12 @@ terraform -chdir=examples/long-running-refresh validate
 git diff --check
 git status --short
 ```
+
+Local tests must remain outside the repository (including under `tests/` after
+it is ignored). Run them only from an untracked working directory or another
+local test harness; do not add test files, test commands that require tracked
+test files, test reports, or generated credentials to GitHub Actions artifacts
+or Git.
 
 `init` may download providers. Do not run `plan`, `apply`, or `destroy` locally
 against a real tenancy unless that action is expressly authorized and the
