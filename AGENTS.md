@@ -64,12 +64,10 @@ natively; never reuse its generated files outside the runner/job.
 
 ## GitHub configuration and workflow practice
 
-Expected repository Actions secrets are `OCI_WIF_CLIENT_ID`,
-`OCI_WIF_CLIENT_SECRET`, `DOMAIN_BASE_URL`, `OCI_REGION`, and
-`COMPARTMENT_ID`. The legacy
-`OIDC_CLIENT_IDENTIFIER` (`client_id:client_secret`) is migration-only; do not
-add new use of it. `id-token: write` and `contents: read` are the normal job
-permissions. Add no broader default permissions.
+Expected repository Actions secrets are `CLIENT_ID`, `CLIENT_SECRET`,
+`DOMAIN_BASE_URL`, `OCI_REGION`, and `COMPARTMENT_ID`. `id-token: write` and
+`contents: read` are the normal job permissions. Add no broader default
+permissions.
 
 Keep `plan` safe to run as a validation action. `apply-and-destroy` must create
 only the temporary validation resource and clean it up in the same job. Do not

@@ -28,4 +28,4 @@ Use the included GitHub workflow to populate these values. For local validation,
 
 The standard and long-running example workflows remove their protected source-JWT directory in an independent always-run cleanup. The long-running workflow also validates and stops the exact refresh daemon recorded by `github-oidc-token-refresh/` before removing that directory.
 
-The existing trust matches `repo:<owner>/<repository>:ref:refs/heads/main`, so real WIF executions must run from `main`. The workflows use repository Actions secrets and intentionally declare no GitHub environment, preserving the default ref subject.
+The existing trust matches `repo:<owner>/<repository>:ref:refs/heads/main`, so real WIF executions must run from `main`. The workflows read the `CLIENT_ID` and `CLIENT_SECRET` repository Actions secrets and intentionally declare no GitHub environment, preserving the default ref subject.

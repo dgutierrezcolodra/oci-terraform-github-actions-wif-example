@@ -42,8 +42,8 @@ jobs:
         shell: bash
         env:
           WIF_DOMAIN_URL: ${{ secrets.DOMAIN_BASE_URL }}
-          WIF_CLIENT_ID: ${{ secrets.OCI_WIF_CLIENT_ID != '' && secrets.OCI_WIF_CLIENT_SECRET != '' && secrets.OCI_WIF_CLIENT_ID || secrets.CLIENT_ID }}
-          WIF_CLIENT_SECRET: ${{ secrets.OCI_WIF_CLIENT_ID != '' && secrets.OCI_WIF_CLIENT_SECRET != '' && secrets.OCI_WIF_CLIENT_SECRET || secrets.CLIENT_SECRET }}
+          WIF_CLIENT_ID: ${{ secrets.CLIENT_ID }}
+          WIF_CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
         run: |
           if [[ -z "$WIF_CLIENT_ID" || -z "$WIF_CLIENT_SECRET" ]]; then
             echo 'Missing OCI WIF client credentials' >&2
@@ -56,8 +56,8 @@ jobs:
         uses: ./ansible-oci-wif
         env:
           OCI_TOKEN_EXCHANGE_DOMAIN_URL: ${{ secrets.DOMAIN_BASE_URL }}
-          OCI_TOKEN_EXCHANGE_CLIENT_ID: ${{ secrets.OCI_WIF_CLIENT_ID != '' && secrets.OCI_WIF_CLIENT_SECRET != '' && secrets.OCI_WIF_CLIENT_ID || secrets.CLIENT_ID }}
-          OCI_TOKEN_EXCHANGE_CLIENT_SECRET: ${{ secrets.OCI_WIF_CLIENT_ID != '' && secrets.OCI_WIF_CLIENT_SECRET != '' && secrets.OCI_WIF_CLIENT_SECRET || secrets.CLIENT_SECRET }}
+          OCI_TOKEN_EXCHANGE_CLIENT_ID: ${{ secrets.CLIENT_ID }}
+          OCI_TOKEN_EXCHANGE_CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
 
       - name: Read the Object Storage namespace
         shell: bash

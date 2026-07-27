@@ -53,13 +53,11 @@ Create these repository secrets:
 
 | Secret | Purpose |
 |---|---|
-| `OCI_WIF_CLIENT_ID` | Client ID of the OCI token-exchange application |
-| `OCI_WIF_CLIENT_SECRET` | Client secret of the OCI token-exchange application |
+| `CLIENT_ID` | Client ID of the OCI token-exchange application |
+| `CLIENT_SECRET` | Client secret of the OCI token-exchange application |
 | `DOMAIN_BASE_URL` | OCI Identity Domain URL |
 | `OCI_REGION` | OCI region, for example `eu-madrid-1` |
 | `COMPARTMENT_ID` | Repository Actions secret for the target compartment OCID |
-
-For migration compatibility, the Terraform workflows also accept the original combined `OIDC_CLIENT_IDENTIFIER` secret in `client_id:client_secret` format. The separate `OCI_WIF_*` secrets take precedence. The Ansible workflow does not use that combined secret: migrated repositories may use their existing separate `CLIENT_ID` and `CLIENT_SECRET` pair when the preferred `OCI_WIF_CLIENT_ID` and `OCI_WIF_CLIENT_SECRET` names are absent. New clients should use the preferred names.
 
 All five values are repository Actions secrets. The tenancy OCID is not required by the provider's WIF configuration; the provider obtains the principal and tenancy context from the OCI token. Terraform jobs read `COMPARTMENT_ID` only from the `secrets` context, and a workflow input cannot redirect an apply to another compartment.
 
@@ -160,7 +158,7 @@ The **Demo Terraform Token Refresh** workflow uses a one-minute source-JWT refre
 
 ## Ansible collection validation
 
-Run **Demo Ansible WIF Namespace Validation** manually from `main` to verify read-only Object Storage namespace access. Its job uses `OCI_WIF_CLIENT_ID`, `OCI_WIF_CLIENT_SECRET`, `DOMAIN_BASE_URL`, and `OCI_REGION`; for migrated repositories only, the separate legacy `CLIENT_ID` and `CLIENT_SECRET` pair is accepted when the preferred names are absent.
+Run **Demo Ansible WIF Namespace Validation** manually from `main` to verify read-only Object Storage namespace access. Its job uses `CLIENT_ID`, `CLIENT_SECRET`, `DOMAIN_BASE_URL`, and `OCI_REGION`.
 
 The `oracle.oci` collection does not directly support the provider's native WIF configuration. This repository therefore uses `ansible-oci-wif/` as the Oracle SDK **Ansible-only compatibility bridge**: it exchanges the one-shot GitHub OIDC token and writes short-lived security-token credentials only under the runner temporary directory. The workflow deletes those credentials in its always-run cleanup step. It does not use an OCI API-key fallback.
 
