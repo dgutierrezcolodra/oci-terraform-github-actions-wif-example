@@ -60,9 +60,6 @@ output "test_result" {
   value = <<-EOT
     NATIVE WIF LONG-RUN DEMO PASSED
 
-    Before sleep: namespace = ${data.oci_objectstorage_namespace.before_sleep.namespace}
-    After sleep:  namespace = ${data.oci_objectstorage_namespace.after_sleep.namespace}
-
-    The second API call succeeded after waiting ${var.wait_duration}.
+    OCI API calls succeeded before and after waiting ${var.wait_duration}.
   EOT
 }
