@@ -126,7 +126,7 @@ POST <DOMAIN_URL>/admin/v1/IdentityPropagationTrusts
   "issuer": "https://token.actions.githubusercontent.com",
   "name": "GitHub Actions to OCI Terraform",
   "oauthClients": [
-    "<OCI_WIF_CLIENT_ID>"
+    "<CLIENT_ID>"
   ],
   "publicKeyEndpoint": "https://token.actions.githubusercontent.com/.well-known/jwks",
   "clientClaimName": "aud",
@@ -181,8 +181,8 @@ Add these repository Actions secrets under **Settings → Secrets and variables 
 
 | Name | Type | Value |
 |---|---|---|
-| `OCI_WIF_CLIENT_ID` | Secret | Runtime token-exchange application client ID |
-| `OCI_WIF_CLIENT_SECRET` | Secret | Runtime token-exchange application client secret |
+| `CLIENT_ID` | Secret | Runtime token-exchange application client ID |
+| `CLIENT_SECRET` | Secret | Runtime token-exchange application client secret |
 | `DOMAIN_BASE_URL` | Secret or variable | Identity Domain URL without a trailing slash |
 | `OCI_REGION` | Secret or variable | Region such as `eu-madrid-1` |
 | `COMPARTMENT_ID` | Secret | Target compartment OCID |
@@ -194,8 +194,6 @@ not declare a GitHub environment and therefore have no Environment approval
 gate. `apply-and-destroy` remains an explicit manual workflow choice. If you
 store non-sensitive values as repository variables, change their workflow
 references from `secrets.NAME` to `vars.NAME`.
-
-For repositories migrated from the original example, only the Terraform workflows also accept the legacy combined `OIDC_CLIENT_IDENTIFIER` secret in `client_id:client_secret` format. `OCI_WIF_CLIENT_ID` and `OCI_WIF_CLIENT_SECRET` take precedence when both forms exist. The Ansible workflow requires the separate credentials.
 
 The old `OCI_TENANCY` secret is no longer used. Provider 8.24.0 obtains the tenancy from the exchanged UPST.
 
@@ -216,9 +214,8 @@ Run `apply-and-destroy` only after the plan succeeds. It creates and removes the
 ## 8. Verify Ansible collection access
 
 From the `main` branch, run **Demo Ansible WIF Namespace Validation** as a
-manual, read-only check. It uses the same repository Actions secrets
-`OCI_WIF_CLIENT_ID`, `OCI_WIF_CLIENT_SECRET`, `DOMAIN_BASE_URL`, and
-`OCI_REGION` described above.
+manual, read-only check. It uses `CLIENT_ID`, `CLIENT_SECRET`,
+`DOMAIN_BASE_URL`, and `OCI_REGION` described above.
 
 `oracle.oci` does not consume the OCI Terraform provider's native WIF configuration directly. The workflow uses the local `ansible-oci-wif/` bridge only for Ansible: it exchanges the GitHub OIDC token for ephemeral security-token credentials used by the collection's namespace facts module. This is not an OCI API-key fallback, and no user API key or `~/.oci/config` is used.
 
@@ -255,7 +252,7 @@ Check for multiple active trusts with `https://token.actions.githubusercontent.c
 
 ### `invalid_client`
 
-Verify that `OCI_WIF_CLIENT_ID` and `OCI_WIF_CLIENT_SECRET` belong to the runtime application, the application is active, and its client ID is present in `oauthClients`.
+Verify that `CLIENT_ID` and `CLIENT_SECRET` belong to the runtime application, the application is active, and its client ID is present in `oauthClients`.
 
 ### Terraform reports missing WIF configuration
 
