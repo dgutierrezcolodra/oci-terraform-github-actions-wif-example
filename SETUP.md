@@ -232,6 +232,12 @@ Run **Demo Terraform Apply (Standard)** with action `plan`. A successful run sho
 
 Run `apply-and-destroy` only after the plan succeeds. It creates and removes the validation bucket in the same job, while the local Terraform state is still available. Configure a remote backend before adapting this example to manage persistent infrastructure.
 
+## 8. Verify Ansible collection access
+
+The **Demo Ansible WIF Namespace Validation** workflow is a manual, read-only check that runs in the protected `oci-validation` GitHub environment. Add that environment and configure the same `OCI_WIF_CLIENT_ID`, `OCI_WIF_CLIENT_SECRET`, `DOMAIN_BASE_URL`, and `OCI_REGION` secrets described above; protect it with the approval rules appropriate for your deployment.
+
+`oracle.oci` does not consume the OCI Terraform provider's native WIF configuration directly. The workflow uses the local `ansible-oci-wif/` bridge only for Ansible: it exchanges the GitHub OIDC token for ephemeral security-token credentials used by the collection's namespace facts module. This is not an OCI API-key fallback, and no user API key or `~/.oci/config` is used.
+
 ## Long-running processes
 
 The provider renews the OCI UPST automatically and rotates the associated RSA key. It rereads `OCI_WORKLOAD_IDENTITY_TOKEN_PATH` when it needs another exchange.

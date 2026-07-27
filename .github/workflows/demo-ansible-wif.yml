@@ -1,0 +1,82 @@
+name: Demo Ansible WIF Namespace Validation
+
+on:
+  workflow_dispatch:
+
+jobs:
+  validate_namespace:
+    name: Validate OCI namespace access through WIF
+    runs-on: ubuntu-latest
+    environment: oci-validation
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      OCI_REGION: ${{ secrets.OCI_REGION }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+
+      - name: Install Ansible and OCI dependencies
+        shell: bash
+        run: |
+          python -m venv "$RUNNER_TEMP/oci-ansible-wif-venv"
+          "$RUNNER_TEMP/oci-ansible-wif-venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/oci-ansible-wif-venv/bin/python" -m pip install ansible-core "oci==2.182.1"
+          "$RUNNER_TEMP/oci-ansible-wif-venv/bin/ansible-galaxy" collection install \
+            --collections-path "$RUNNER_TEMP/oci-ansible-collections" \
+            --requirements-file ansible/requirements.yml
+
+      - name: Create GitHub OIDC token file
+        uses: ./github-oidc-token
+        with:
+          audience: https://cloud.oracle.com
+
+      - name: Export OCI WIF configuration
+        shell: bash
+        env:
+          WIF_DOMAIN_URL: ${{ secrets.DOMAIN_BASE_URL }}
+          WIF_CLIENT_ID: ${{ secrets.OCI_WIF_CLIENT_ID }}
+          WIF_CLIENT_SECRET: ${{ secrets.OCI_WIF_CLIENT_SECRET }}
+          WIF_CLIENT_IDENTIFIER: ${{ secrets.OIDC_CLIENT_IDENTIFIER }}
+        run: |
+          if [[ -z "$WIF_CLIENT_ID" || -z "$WIF_CLIENT_SECRET" ]]; then
+            if [[ "$WIF_CLIENT_IDENTIFIER" == *:* ]]; then
+              WIF_CLIENT_ID=${WIF_CLIENT_IDENTIFIER%%:*}
+              WIF_CLIENT_SECRET=${WIF_CLIENT_IDENTIFIER#*:}
+            fi
+          fi
+          if [[ -z "$WIF_CLIENT_ID" || -z "$WIF_CLIENT_SECRET" ]]; then
+            echo 'Missing OCI WIF client credentials' >&2
+            exit 1
+          fi
+          echo "::add-mask::$WIF_CLIENT_ID"
+          echo "::add-mask::$WIF_CLIENT_SECRET"
+          {
+            echo "OCI_TOKEN_EXCHANGE_DOMAIN_URL=$WIF_DOMAIN_URL"
+            echo "OCI_TOKEN_EXCHANGE_CLIENT_ID=$WIF_CLIENT_ID"
+            echo "OCI_TOKEN_EXCHANGE_CLIENT_SECRET=$WIF_CLIENT_SECRET"
+          } >> "$GITHUB_ENV"
+
+      - name: Create OCI Ansible WIF credentials
+        uses: ./ansible-oci-wif
+
+      - name: Read the Object Storage namespace
+        shell: bash
+        env:
+          ANSIBLE_COLLECTIONS_PATH: ${{ runner.temp }}/oci-ansible-collections
+        run: |
+          "$RUNNER_TEMP/oci-ansible-wif-venv/bin/ansible-playbook" \
+            ansible/playbooks/validate_namespace.yml
+
+      - name: Remove OCI Ansible WIF credentials
+        if: always()
+        shell: bash
+        run: rm -rf "$RUNNER_TEMP/oci-ansible-wif"

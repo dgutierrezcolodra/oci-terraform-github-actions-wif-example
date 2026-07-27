@@ -1,0 +1,14 @@
+---
+- name: Validate OCI namespace access through WIF
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Read the Object Storage namespace
+      oracle.oci.oci_object_storage_namespace_facts:
+      register: namespace_result
+      no_log: true
+
+    - name: Show the namespace
+      ansible.builtin.debug:
+        msg: "{{ namespace_result.namespace }}"

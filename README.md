@@ -128,7 +128,12 @@ The **Demo Terraform Token Refresh** workflow defaults to a two-minute smoke tes
 .
 ├── .github/workflows/
 │   ├── demo-terraform-apply.yml
+│   ├── demo-ansible-wif.yml
 │   └── demo-terraform-token-refresh.yml
+├── ansible/
+│   ├── playbooks/validate_namespace.yml
+│   └── requirements.yml
+├── ansible-oci-wif/
 ├── examples/long-running-refresh/
 ├── github-oidc-token/
 │   ├── action.yml
@@ -148,6 +153,12 @@ The **Demo Terraform Token Refresh** workflow defaults to a two-minute smoke tes
 - The workflow never writes an OCI UPST, OCI private key, or client secret to logs.
 - Use GitHub environments and environment protection rules for production deployments.
 - Give the service user only the OCI permissions required by the Terraform module.
+
+## Ansible collection validation
+
+Run **Demo Ansible WIF Namespace Validation** manually to verify read-only Object Storage namespace access. Its job uses the protected `oci-validation` environment and the same `OCI_WIF_CLIENT_ID`, `OCI_WIF_CLIENT_SECRET`, `DOMAIN_BASE_URL`, and `OCI_REGION` secrets as the Terraform workflows.
+
+The `oracle.oci` collection does not directly support the provider's native WIF configuration. This repository therefore uses `ansible-oci-wif/` as an **Ansible-only bridge**: it exchanges the GitHub OIDC token and writes short-lived security-token credentials only under the runner temporary directory. The workflow deletes those credentials in its always-run cleanup step. It does not use an OCI API-key fallback.
 
 ## References
 
