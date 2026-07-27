@@ -20,7 +20,7 @@ on:
     branches:
       - main
     paths:
-      - "terraform/**"
+      - "examples/terraform/standard/**"
       - ".github/workflows/**"
 
 jobs:
@@ -75,25 +75,25 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Terraform Init
-        working-directory: terraform
+        working-directory: examples/terraform/standard
         run: terraform init
 
       - name: Terraform Validate
-        working-directory: terraform
+        working-directory: examples/terraform/standard
         run: terraform validate
 
       - name: Terraform Plan
-        working-directory: terraform
+        working-directory: examples/terraform/standard
         run: terraform plan -out=tfplan
 
       - name: Terraform Apply
         if: github.event.inputs.action == 'apply-and-destroy'
-        working-directory: terraform
+        working-directory: examples/terraform/standard
         run: terraform apply -auto-approve tfplan
 
       - name: Terraform Destroy (cleanup)
         if: always() && github.event.inputs.action == 'apply-and-destroy'
-        working-directory: terraform
+        working-directory: examples/terraform/standard
         run: terraform destroy -auto-approve
 
       - name: Remove GitHub OIDC credentials

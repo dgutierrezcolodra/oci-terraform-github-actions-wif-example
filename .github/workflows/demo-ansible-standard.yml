@@ -30,7 +30,7 @@ jobs:
           "$RUNNER_TEMP/oci-ansible-wif-venv/bin/python" -m pip install "ansible-core==2.15.13" "oci==2.182.1"
           "$RUNNER_TEMP/oci-ansible-wif-venv/bin/ansible-galaxy" collection install \
             --collections-path "$RUNNER_TEMP/oci-ansible-collections" \
-            --requirements-file ansible/requirements.yml
+            --requirements-file examples/ansible/namespace-validation/requirements.yml
           echo "$RUNNER_TEMP/oci-ansible-wif-venv/bin" >> "$GITHUB_PATH"
 
       - name: Create GitHub OIDC token file
@@ -65,7 +65,7 @@ jobs:
           ANSIBLE_COLLECTIONS_PATH: ${{ runner.temp }}/oci-ansible-collections
         run: |
           "$RUNNER_TEMP/oci-ansible-wif-venv/bin/ansible-playbook" \
-            ansible/playbooks/validate_namespace.yml
+            examples/ansible/namespace-validation/playbook.yml
 
       - name: Remove OCI Ansible WIF credentials
         if: always()

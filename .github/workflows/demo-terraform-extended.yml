@@ -65,15 +65,15 @@ jobs:
           echo "INITIAL_TOKEN_MTIME=$initial_token_mtime" >> "$GITHUB_ENV"
 
       - name: Terraform Init
-        working-directory: examples/long-running-refresh
+        working-directory: examples/terraform/extended-runtime
         run: terraform init
 
       - name: Terraform Validate
-        working-directory: examples/long-running-refresh
+        working-directory: examples/terraform/extended-runtime
         run: terraform validate
 
       - name: Terraform Apply (simulated long operation)
-        working-directory: examples/long-running-refresh
+        working-directory: examples/terraform/extended-runtime
         run: |
           echo "Starting Terraform apply with a simulated long-running operation..."
           echo "The background daemon refreshes only the GitHub source JWT file."
@@ -90,7 +90,7 @@ jobs:
 
       - name: Terraform Destroy (cleanup)
         if: always()
-        working-directory: examples/long-running-refresh
+        working-directory: examples/terraform/extended-runtime
         run: terraform destroy -auto-approve || true
 
       - name: Stop OIDC refresh daemon and remove credentials
