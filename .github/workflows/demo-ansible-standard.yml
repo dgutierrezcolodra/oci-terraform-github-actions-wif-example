@@ -30,7 +30,7 @@ jobs:
           "$RUNNER_TEMP/oci-ansible-wif-venv/bin/python" -m pip install "ansible-core==2.15.13" "oci==2.182.1"
           "$RUNNER_TEMP/oci-ansible-wif-venv/bin/ansible-galaxy" collection install \
             --collections-path "$RUNNER_TEMP/oci-ansible-collections" \
-            --requirements-file examples/ansible/namespace-validation/requirements.yml
+            --requirements-file examples/ansible/requirements.yml
           echo "$RUNNER_TEMP/oci-ansible-wif-venv/bin" >> "$GITHUB_PATH"
 
       - name: Create GitHub OIDC token file
