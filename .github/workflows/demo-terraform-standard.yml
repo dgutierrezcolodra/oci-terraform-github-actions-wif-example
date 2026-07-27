@@ -21,7 +21,8 @@ on:
       - main
     paths:
       - "examples/terraform/standard/**"
-      - ".github/workflows/**"
+      - ".github/actions/github-oidc-token/**"
+      - ".github/workflows/demo-terraform-standard.yml"
 
 jobs:
   terraform_oci:
@@ -69,7 +70,6 @@ jobs:
             echo "OCI_TOKEN_EXCHANGE_DOMAIN_URL=$WIF_DOMAIN_URL"
             echo 'OCI_TOKEN_EXCHANGE_AUTH=OAuthClientCredentials'
             echo "OCI_TOKEN_EXCHANGE_CLIENT_ID=$WIF_CLIENT_ID"
-            echo "OCI_TOKEN_EXCHANGE_CLIENT_SECRET=$WIF_CLIENT_SECRET"
             echo 'OCI_TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE=urn:oci:token-type:oci-upst'
             echo 'OCI_TOKEN_EXCHANGE_SUBJECT_TOKEN_TYPE=jwt'
           } >> "$GITHUB_ENV"
@@ -84,16 +84,22 @@ jobs:
 
       - name: Terraform Plan
         working-directory: examples/terraform/standard
+        env:
+          OCI_TOKEN_EXCHANGE_CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
         run: terraform plan -out=tfplan
 
       - name: Terraform Apply
         if: github.event.inputs.action == 'apply-and-destroy'
         working-directory: examples/terraform/standard
+        env:
+          OCI_TOKEN_EXCHANGE_CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
         run: terraform apply -auto-approve tfplan
 
       - name: Terraform Destroy (cleanup)
         if: always() && github.event.inputs.action == 'apply-and-destroy'
         working-directory: examples/terraform/standard
+        env:
+          OCI_TOKEN_EXCHANGE_CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
         run: terraform destroy -auto-approve
 
       - name: Remove GitHub OIDC credentials

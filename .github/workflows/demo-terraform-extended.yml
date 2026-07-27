@@ -54,7 +54,6 @@ jobs:
             echo "OCI_TOKEN_EXCHANGE_DOMAIN_URL=$WIF_DOMAIN_URL"
             echo 'OCI_TOKEN_EXCHANGE_AUTH=OAuthClientCredentials'
             echo "OCI_TOKEN_EXCHANGE_CLIENT_ID=$WIF_CLIENT_ID"
-            echo "OCI_TOKEN_EXCHANGE_CLIENT_SECRET=$WIF_CLIENT_SECRET"
             echo 'OCI_TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE=urn:oci:token-type:oci-upst'
             echo 'OCI_TOKEN_EXCHANGE_SUBJECT_TOKEN_TYPE=jwt'
           } >> "$GITHUB_ENV"
@@ -74,6 +73,8 @@ jobs:
 
       - name: Terraform Apply (simulated long operation)
         working-directory: examples/terraform/extended-runtime
+        env:
+          OCI_TOKEN_EXCHANGE_CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
         run: |
           echo "Starting Terraform apply with a simulated long-running operation..."
           echo "The background daemon refreshes only the GitHub source JWT file."
@@ -91,6 +92,8 @@ jobs:
       - name: Terraform Destroy (cleanup)
         if: always()
         working-directory: examples/terraform/extended-runtime
+        env:
+          OCI_TOKEN_EXCHANGE_CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
         run: terraform destroy -auto-approve || true
 
       - name: Stop OIDC refresh daemon and remove credentials
