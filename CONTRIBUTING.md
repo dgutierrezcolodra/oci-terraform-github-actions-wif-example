@@ -116,7 +116,8 @@ python3 -m py_compile \
 ```
 
 Local tests remain outside Git exactly as required by `AGENTS.md`. Do not add,
-stage, upload, or reference local test files from tracked automation.
+stage, upload, or reference local test files from tracked automation. Never
+track `.superpowers/` or `tests/`.
 
 ### Terraform examples
 
@@ -147,7 +148,16 @@ installing its pinned collection:
 
 ```bash
 ansible-playbook --syntax-check examples/ansible/namespace-validation/playbook.yml
+ansible-playbook --syntax-check examples/ansible/extended-runtime/playbook.yml
+PYTHONPYCACHEPREFIX=/private/tmp/oci-wif-ansible-extended-pycache \
+  python3 -m unittest -v tests.test_repository_layout tests.test_ansible_extended_runtime
 ```
+
+The extended Ansible proof is controller-local and uses an explicit renewal checkpoint:
+it rematerializes credentials between tasks, not transparently inside a running OCI module.
+Its 65-minute proof is manual and opt-in.
+Keep `examples/ansible/requirements.yml`, `examples/ansible/extended-runtime`,
+and `.github/workflows/demo-ansible-extended.yml` aligned.
 
 ### Documentation
 

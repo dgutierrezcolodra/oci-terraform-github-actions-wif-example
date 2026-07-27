@@ -19,14 +19,14 @@ permissions.
 |---|---|---|
 | Standard Terraform | `.github/actions/github-oidc-token`, `examples/terraform/standard`, and `.github/workflows/demo-terraform-standard.yml` | One-shot GitHub OIDC source JWT with native Terraform WIF. |
 | Extended Terraform | `.github/actions/github-oidc-token-refresh`, `examples/terraform/extended-runtime`, and `.github/workflows/demo-terraform-extended.yml` | Refreshes only the GitHub source JWT for a Terraform process that needs it. |
-| Standard Ansible | `.github/actions/github-oidc-token`, `.github/actions/ansible-oci-wif`, `examples/ansible/namespace-validation`, and `.github/workflows/demo-ansible-standard.yml` | The adapter is needed only by the `oracle.oci` collection. |
+| Standard Ansible | `.github/actions/github-oidc-token`, `.github/actions/ansible-oci-wif`, `examples/ansible/requirements.yml`, `examples/ansible/namespace-validation`, and `.github/workflows/demo-ansible-standard.yml` | The adapter is needed only by the `oracle.oci` collection. |
+| Extended Ansible | `.github/actions/github-oidc-token-refresh`, `.github/actions/ansible-oci-wif`, `examples/ansible/requirements.yml`, `examples/ansible/extended-runtime`, and `.github/workflows/demo-ansible-extended.yml` | **Demo Ansible WIF Credential Renewal** proves an explicit renewal checkpoint. |
 | Terraform and Ansible | All three action directories, both Terraform example directories, the Ansible example directory, and the matching workflow references | Combine only the components your jobs use. |
 
 The one-shot OIDC action is shared by standard Terraform and standard Ansible.
-The refresh action replaces only the source JWT and is currently certified for
-extended Terraform. Long-running Ansible is not transparently supported or
-claimed. The Ansible adapter is a narrow compatibility bridge for
-`oracle.oci`, not a second general WIF implementation.
+The refresh action is shared by extended Terraform and Extended Ansible. The
+Ansible adapter is a narrow compatibility bridge for `oracle.oci`, not a
+second general WIF implementation.
 
 Each publishable action would be extracted to its own repository before any
 future GitHub Marketplace publication. This reference repository intentionally
@@ -149,6 +149,21 @@ the same one-shot GitHub OIDC token and writes short-lived security-token
 credentials only below `RUNNER_TEMP` for the job. The workflow removes those
 credentials in always-run cleanup. It does not use an OCI API-key fallback.
 
+## Extended Ansible operations
+
+**Demo Ansible WIF Credential Renewal** is a controller-local, read-only proof
+that creates, updates, or deletes no OCI resource. It is a compatibility blueprint, not `native Ansible WIF`.
+The source-JWT refresher is shared with extended Terraform. At an **explicit renewal checkpoint**, Ansible
+synchronously rematerializes the OCI UPST and matching private key together;
+later `oracle.oci` module tasks load the renewed files. One already-running
+OCI module retains its in-memory signer and is not transparently refreshed by
+file replacement.
+
+For a long service operation, submit asynchronously with `wait: false`, renew
+at a later task boundary, then use facts/status tasks. The proof modes are 120
+seconds and 65 minutes; the 65-minute run is manual and opt-in. It does not
+distribute credentials to managed hosts.
+
 ## Repository structure
 
 ```text
@@ -160,10 +175,14 @@ credentials in always-run cleanup. It does not use an OCI API-key fallback.
 │   │   └── github-oidc-token-refresh/
 │   └── workflows/
 │       ├── demo-ansible-standard.yml
+│       ├── demo-ansible-extended.yml
 │       ├── demo-terraform-extended.yml
 │       └── demo-terraform-standard.yml
 ├── examples/
-│   ├── ansible/namespace-validation/
+│   ├── ansible/
+│   │   ├── extended-runtime/
+│   │   ├── namespace-validation/
+│   │   └── requirements.yml
 │   └── terraform/
 │       ├── extended-runtime/
 │       └── standard/
