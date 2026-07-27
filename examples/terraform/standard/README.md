@@ -1,4 +1,4 @@
-# Terraform native OCI WIF example
+# Standard Terraform native OCI WIF example
 
 This root module creates one private Object Storage bucket and validates native OCI Workload Identity Federation authentication.
 
@@ -24,8 +24,21 @@ OCI_TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE=urn:oci:token-type:oci-upst
 OCI_TOKEN_EXCHANGE_SUBJECT_TOKEN_TYPE=jwt
 ```
 
-Use the included GitHub workflow to populate these values. For local validation, provide a valid external JWT file and matching OCI Identity Propagation Trust before running `terraform plan`.
+Use `.github/workflows/demo-terraform-standard.yml` and
+`.github/actions/github-oidc-token` to populate these values in GitHub Actions.
+For local validation, provide a valid external JWT file and matching OCI
+Identity Propagation Trust before running `terraform plan`.
 
-The standard and long-running example workflows remove their protected source-JWT directory in an independent always-run cleanup. The long-running workflow also validates and stops the exact refresh daemon recorded by `github-oidc-token-refresh/` before removing that directory.
+From the repository root, initialize and validate this example with:
+
+```bash
+terraform -chdir=examples/terraform/standard init -backend=false
+terraform -chdir=examples/terraform/standard validate
+```
+
+The standard and extended Terraform workflows remove their protected source-JWT
+directory in an independent always-run cleanup. The extended workflow also
+validates and stops the exact refresh daemon recorded by
+`.github/actions/github-oidc-token-refresh` before removing that directory.
 
 The existing trust matches `repo:<owner>/<repository>:ref:refs/heads/main`, so real WIF executions must run from `main`. The workflows read the `CLIENT_ID` and `CLIENT_SECRET` repository Actions secrets and intentionally declare no GitHub environment, preserving the default ref subject.

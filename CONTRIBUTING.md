@@ -110,9 +110,13 @@ Run the checks that match the files you changed.
 ### Python action
 
 ```bash
-python3 -m py_compile github-oidc-token/main.py tests/test_github_oidc_token.py
-python3 -m unittest discover -s tests -v
+python3 -m py_compile \
+  .github/actions/github-oidc-token-refresh/main.py \
+  .github/actions/ansible-oci-wif/main.py
 ```
+
+Local tests remain outside Git exactly as required by `AGENTS.md`. Do not add,
+stage, upload, or reference local test files from tracked automation.
 
 ### Terraform examples
 
@@ -126,15 +130,23 @@ For validation, run from each Terraform example directory after initializing
 providers:
 
 ```bash
-terraform -chdir=terraform init -backend=false
-terraform -chdir=terraform validate
+terraform -chdir=examples/terraform/standard init -backend=false
+terraform -chdir=examples/terraform/standard validate
 ```
 
-If you change `examples/long-running-refresh/`, validate that directory as well:
+If you change `examples/terraform/extended-runtime/`, validate that directory
+as well:
 
 ```bash
-terraform -chdir=examples/long-running-refresh init -backend=false
-terraform -chdir=examples/long-running-refresh validate
+terraform -chdir=examples/terraform/extended-runtime init -backend=false
+terraform -chdir=examples/terraform/extended-runtime validate
+```
+
+For the read-only Ansible namespace example, validate its syntax after
+installing its pinned collection:
+
+```bash
+ansible-playbook --syntax-check examples/ansible/namespace-validation/playbook.yml
 ```
 
 ### Documentation
@@ -154,8 +166,8 @@ repository contents.
    fix.
 2. Fork the repository and create a focused branch.
 3. Keep pull requests small enough to review.
-4. Update `README.md`, `SETUP.md`, or `terraform/README.md` when behavior,
-   inputs, secrets, setup steps, or workflow names change.
+4. Update `README.md`, `SETUP.md`, or the relevant example README when
+   behavior, inputs, secrets, setup steps, or workflow names change.
 5. Run the relevant checks from [Development checks](#development-checks).
 6. Explain what changed and how reviewers can validate it.
 7. Include `Signed-off-by` in each commit when required.
