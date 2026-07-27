@@ -74,10 +74,19 @@ def serialize_private_key(private_key: Any) -> bytes:
     return private_key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption())
 
 
-def append_github_env(config_path: pathlib.Path) -> None:
-    """Make the generated config available to later GitHub Actions steps."""
-    with open(required_env("GITHUB_ENV"), "a", encoding="utf-8") as stream:
-        stream.write(f"OCI_CONFIG_FILE={config_path}\nOCI_ANSIBLE_AUTH_TYPE=security_token\n")
+def append_command_values(variable: str, values: dict[str, pathlib.Path | str]) -> None:
+    """Append non-secret paths or environment settings to a GitHub command file."""
+    command_file = os.environ.get(variable)
+    if not command_file:
+        return
+
+    rendered_values = {name: str(value) for name, value in values.items()}
+    if any("\n" in value or "\r" in value for value in rendered_values.values()):
+        raise RuntimeError(f"Invalid value for GitHub command file: {variable}")
+
+    with open(command_file, "a", encoding="utf-8") as stream:
+        for name, value in rendered_values.items():
+            stream.write(f"{name}={value}\n")
 
 
 def create_signer(jwt_reader: Callable[[], str]) -> Any:
@@ -126,7 +135,23 @@ def main(token_exchange_signer: Callable[..., Any] | None = None) -> None:
         f"security_token_file={security_token_path}\n"
         f"key_file={private_key_path}\n",
     )
-    append_github_env(config_path)
+    append_command_values(
+        "GITHUB_ENV",
+        {
+            "OCI_CONFIG_FILE": config_path,
+            "OCI_ANSIBLE_AUTH_TYPE": "security_token",
+            "OCI_ANSIBLE_SECURITY_TOKEN_FILE": security_token_path,
+            "OCI_ANSIBLE_PRIVATE_KEY_FILE": private_key_path,
+        },
+    )
+    append_command_values(
+        "GITHUB_OUTPUT",
+        {
+            "config_path": config_path,
+            "security_token_path": security_token_path,
+            "private_key_path": private_key_path,
+        },
+    )
     print("Ephemeral OCI Ansible security-token credentials created")
 
 

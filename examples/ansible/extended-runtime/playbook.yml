@@ -1,0 +1,169 @@
+---
+- name: Prove OCI Ansible WIF credential rematerialization at an explicit checkpoint
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    wif_wait_seconds: 120
+    wif_helper_path: "{{ lookup('env', 'GITHUB_WORKSPACE') }}/.github/actions/ansible-oci-wif/main.py"
+    source_jwt_path: "{{ lookup('env', 'OCI_WORKLOAD_IDENTITY_TOKEN_PATH') }}"
+    security_token_path: "{{ lookup('env', 'OCI_ANSIBLE_SECURITY_TOKEN_FILE') }}"
+    private_key_path: "{{ lookup('env', 'OCI_ANSIBLE_PRIVATE_KEY_FILE') }}"
+  tasks:
+    - name: Validate the selected checkpoint duration
+      ansible.builtin.assert:
+        that:
+          - wif_wait_seconds | int in [120, 3900]
+          - wif_wait_seconds | string in ['120', '3900']
+        fail_msg: wif_wait_seconds must be the integer 120 or 3900.
+      no_log: true
+
+    - name: Validate the workspace-bound Ansible WIF helper path
+      ansible.builtin.assert:
+        that:
+          - lookup('env', 'GITHUB_WORKSPACE') | length > 0
+          - (lookup('env', 'GITHUB_WORKSPACE') ~ '/.github/actions/ansible-oci-wif/main.py') is match('^/')
+          - wif_helper_path == (lookup('env', 'GITHUB_WORKSPACE') ~ '/.github/actions/ansible-oci-wif/main.py')
+      no_log: true
+
+    - name: Inspect the trusted Ansible WIF helper
+      ansible.builtin.stat:
+        path: "{{ wif_helper_path }}"
+        get_checksum: false
+      register: wif_helper
+      no_log: true
+
+    - name: Validate the trusted Ansible WIF helper attributes
+      ansible.builtin.assert:
+        that:
+          - wif_helper.stat.exists
+          - wif_helper.stat.isreg
+          - not wif_helper.stat.islnk
+      no_log: true
+
+    - name: Set the in-memory continuity marker
+      ansible.builtin.set_fact:
+        continuity_marker: active
+      no_log: true
+
+    - name: Inspect the source JWT before the checkpoint
+      ansible.builtin.stat:
+        path: "{{ source_jwt_path }}"
+        get_checksum: false
+      register: source_jwt_before
+      no_log: true
+
+    - name: Inspect the security token before the checkpoint
+      ansible.builtin.stat:
+        path: "{{ security_token_path }}"
+        get_checksum: false
+      register: security_token_before
+      no_log: true
+
+    - name: Inspect the private key before the checkpoint
+      ansible.builtin.stat:
+        path: "{{ private_key_path }}"
+        get_checksum: false
+      register: private_key_before
+      no_log: true
+
+    - name: Validate the credential files before the checkpoint
+      ansible.builtin.assert:
+        that:
+          - source_jwt_before.stat.exists
+          - security_token_before.stat.exists
+          - private_key_before.stat.exists
+      no_log: true
+
+    - name: Read the Object Storage namespace before credential renewal
+      oracle.oci.oci_object_storage_namespace_facts:
+      register: namespace_before
+      no_log: true
+
+    - name: Validate namespace access before credential renewal
+      ansible.builtin.assert:
+        that:
+          - (namespace_before.namespace | default('') | string | trim | length) > 0
+      no_log: true
+
+    - name: Report namespace access before credential renewal
+      ansible.builtin.debug:
+        msg: OCI namespace access validated before credential renewal.
+
+    - name: Wait for the selected checkpoint duration
+      ansible.builtin.pause:
+        seconds: "{{ wif_wait_seconds | int }}"
+      no_log: true
+
+    - name: Rematerialize OCI Ansible WIF credentials
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - "{{ wif_helper_path }}"
+      environment:
+        RUNNER_TEMP: "{{ lookup('env', 'RUNNER_TEMP') }}"
+        GITHUB_ENV: "{{ lookup('env', 'GITHUB_ENV') }}"
+        GITHUB_OUTPUT: "{{ lookup('env', 'GITHUB_OUTPUT') }}"
+        OCI_WORKLOAD_IDENTITY_TOKEN_PATH: "{{ lookup('env', 'OCI_WORKLOAD_IDENTITY_TOKEN_PATH') }}"
+        OCI_TOKEN_EXCHANGE_DOMAIN_URL: "{{ lookup('env', 'OCI_TOKEN_EXCHANGE_DOMAIN_URL') }}"
+        OCI_TOKEN_EXCHANGE_CLIENT_ID: "{{ lookup('env', 'OCI_TOKEN_EXCHANGE_CLIENT_ID') }}"
+        OCI_TOKEN_EXCHANGE_CLIENT_SECRET: "{{ lookup('env', 'OCI_TOKEN_EXCHANGE_CLIENT_SECRET') }}"
+        OCI_REGION: "{{ lookup('env', 'OCI_REGION') }}"
+      register: credential_renewal
+      changed_when: credential_renewal.rc == 0
+      no_log: true
+
+    - name: Report credential rematerialization
+      ansible.builtin.debug:
+        msg: OCI credentials rematerialized inside the active playbook.
+
+    - name: Inspect the source JWT after the checkpoint
+      ansible.builtin.stat:
+        path: "{{ source_jwt_path }}"
+        get_checksum: false
+      register: source_jwt_after
+      no_log: true
+
+    - name: Inspect the security token after the checkpoint
+      ansible.builtin.stat:
+        path: "{{ security_token_path }}"
+        get_checksum: false
+      register: security_token_after
+      no_log: true
+
+    - name: Inspect the private key after the checkpoint
+      ansible.builtin.stat:
+        path: "{{ private_key_path }}"
+        get_checksum: false
+      register: private_key_after
+      no_log: true
+
+    - name: Validate credential continuity after the checkpoint
+      ansible.builtin.assert:
+        that:
+          - source_jwt_after.stat.mtime > source_jwt_before.stat.mtime
+          - security_token_after.stat.inode != security_token_before.stat.inode
+          - private_key_after.stat.inode != private_key_before.stat.inode
+          - security_token_after.stat.mode == '0600'
+          - private_key_after.stat.mode == '0600'
+          - continuity_marker == 'active'
+      no_log: true
+
+    - name: Read the Object Storage namespace after credential renewal
+      oracle.oci.oci_object_storage_namespace_facts:
+      register: namespace_after
+      no_log: true
+
+    - name: Validate namespace access after credential renewal
+      ansible.builtin.assert:
+        that:
+          - (namespace_after.namespace | default('') | string | trim | length) > 0
+      no_log: true
+
+    - name: Report namespace access after credential renewal
+      ansible.builtin.debug:
+        msg: OCI namespace access validated after credential renewal.
+
+    - name: Report the extended-runtime proof result
+      ansible.builtin.debug:
+        msg: ANSIBLE WIF EXTENDED-RUNTIME PROOF PASSED.

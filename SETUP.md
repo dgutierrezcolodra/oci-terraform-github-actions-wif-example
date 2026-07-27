@@ -205,6 +205,10 @@ writes the JWT atomically below `RUNNER_TEMP`, exports only its path, and does
 not refresh it. `.github/actions/ansible-oci-wif` remains the Oracle SDK
 compatibility bridge for the Ansible collection.
 
+The bridge exports `OCI_CONFIG_FILE`, `OCI_ANSIBLE_AUTH_TYPE=security_token`,
+`OCI_ANSIBLE_SECURITY_TOKEN_FILE`, and `OCI_ANSIBLE_PRIVATE_KEY_FILE`; its safe
+action outputs are the protected config, security-token, and private-key paths.
+
 ## 7. Verify with a plan
 
 From the `main` branch, run **Demo Terraform Apply (Standard)** with action
@@ -228,8 +232,19 @@ configuration directly. The workflow uses the local
 `.github/actions/ansible-oci-wif` bridge only for Ansible: it exchanges the
 GitHub OIDC token for ephemeral security-token credentials used by the
 collection's namespace facts module. This is not an OCI API-key fallback, and
-no user API key or `~/.oci/config` is used. Long-running Ansible is not
-transparently supported or claimed by this reference.
+no user API key or `~/.oci/config` is used.
+
+For **Demo Ansible WIF Credential Renewal**, use
+`.github/actions/github-oidc-token-refresh`, `.github/actions/ansible-oci-wif`,
+`examples/ansible/requirements.yml`, and
+`examples/ansible/extended-runtime`. The source-JWT refresher is shared with
+extended Terraform. At an explicit renewal checkpoint, Ansible synchronously rematerializes the OCI UPST and matching private key together; later `oracle.oci` module tasks load the renewed files. One already-running OCI module retains its in-memory signer and is not transparently refreshed by file replacement.
+
+The controller-local proof distributes no credentials to managed hosts and
+creates, updates, or deletes no OCI resource. For a long service operation,
+submit asynchronously with `wait: false`, renew at a later task boundary, then
+use facts/status tasks. Its proof modes are 120 seconds and 65 minutes; the 65-minute
+run is manual and opt-in. This is a compatibility blueprint, not `native Ansible WIF`.
 
 ## Long-running processes
 

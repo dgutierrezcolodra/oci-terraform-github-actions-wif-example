@@ -11,7 +11,7 @@ turn it into an API-key based deployment template.
   GitHub Script to request a GitHub OIDC JWT once and write it atomically to a
   protected file.
 - `.github/actions/github-oidc-token-refresh/`: custom extension that refreshes
-  only the source JWT for the opt-in extended Terraform workflow.
+  only the source JWT for the opt-in extended Terraform and Ansible workflows.
 - `examples/terraform/standard/`: OCI bucket validation example. The provider
   uses native `WorkloadIdentityFederation` authentication.
 - `examples/terraform/extended-runtime/`: Terraform workload used to exercise
@@ -19,15 +19,19 @@ turn it into an API-key based deployment template.
 - `.github/actions/ansible-oci-wif/`: composite action/helper for the OCI
   Ansible collection. It is intentionally a compatibility bridge, not a second
   WIF implementation.
+- `examples/ansible/requirements.yml`: shared pinned collection requirements.
 - `examples/ansible/namespace-validation/`: read-only Ansible Object Storage
-  namespace validation and its pinned collection requirements.
+  namespace validation.
+- `examples/ansible/extended-runtime/`: controller-local explicit renewal
+  checkpoint proof for the Ansible compatibility blueprint.
 - `tests/`: local-only test workspace. It must remain outside version control;
   do not add, commit, upload, or reference its files from tracked automation.
   Keep credential-handling checks deterministic and offline when running them
   locally.
 - `.github/workflows/`: executable examples. Current workflow display names are
   `Demo Terraform Apply (Standard)`, `Demo Terraform Token Refresh`, and
-  `Demo Ansible WIF Namespace Validation`.
+  `Demo Ansible WIF Namespace Validation`, and `Demo Ansible WIF Credential
+  Renewal` (`demo-ansible-extended.yml`).
 - `README.md`, `SETUP.md`, `examples/terraform/standard/README.md`, and
   `examples/terraform/extended-runtime/README.md`: user-facing architecture,
   setup, and Terraform guidance. `CONTRIBUTING.md` is the contribution policy.
@@ -43,9 +47,14 @@ The `oracle.oci` Ansible collection does not use that native provider flow. The
 `ansible-oci-wif` helper reads the same short-lived GitHub JWT, uses the OCI
 Python SDK token-exchange signer, and creates an OCI-collection-compatible
 security token, matching ephemeral key, and config file for the job only. It
-exports `OCI_CONFIG_FILE` and `OCI_ANSIBLE_AUTH_TYPE=security_token` through
-`GITHUB_ENV`. Treat this as a narrow bridge until the collection supports WIF
-natively; never reuse its generated files outside the runner/job.
+exports `OCI_CONFIG_FILE`, `OCI_ANSIBLE_AUTH_TYPE=security_token`,
+`OCI_ANSIBLE_SECURITY_TOKEN_FILE`, and `OCI_ANSIBLE_PRIVATE_KEY_FILE` through
+`GITHUB_ENV`, with protected config/token/key path action outputs. At an
+explicit renewal checkpoint it rematerializes the OCI UPST and matching private
+key together; later module tasks load the renewed files. An already-running
+module retains its in-memory signer. Treat this as a narrow, controller-local
+compatibility blueprint, not native Ansible WIF; never reuse or distribute its
+generated files outside the runner/job.
 
 ## Non-negotiable security rules
 
@@ -93,8 +102,8 @@ For the token-refresh demo, assert a real file timestamp change (not merely two
 - OCI Python SDK: pin it in the Ansible workflow to a version verified with
   `TokenExchangeSigner`; update its test coverage when changing it.
 - Ansible: pin the `oracle.oci` collection in
-  `examples/ansible/namespace-validation/requirements.yml`. Do not silently
-  float collection or SDK versions.
+  `examples/ansible/requirements.yml`. Do not silently float collection or SDK
+  versions.
 - When upstream OCI support changes, first verify whether native Ansible WIF is
   available. If it is, remove the bridge only after an end-to-end replacement
   is verified and documented.
@@ -120,6 +129,9 @@ terraform -chdir=examples/terraform/standard validate
 terraform -chdir=examples/terraform/extended-runtime init -backend=false
 terraform -chdir=examples/terraform/extended-runtime validate
 ansible-playbook --syntax-check examples/ansible/namespace-validation/playbook.yml
+ansible-playbook --syntax-check examples/ansible/extended-runtime/playbook.yml
+PYTHONPYCACHEPREFIX=/private/tmp/oci-wif-ansible-extended-pycache \
+  python3 -m unittest -v tests.test_repository_layout tests.test_ansible_extended_runtime
 git diff --check
 git status --short
 ```
@@ -128,7 +140,9 @@ Local tests must remain outside the repository (including under `tests/` after
 it is ignored). Run them only from an untracked working directory or another
 local test harness; do not add test files, test commands that require tracked
 test files, test reports, or generated credentials to GitHub Actions artifacts
-or Git.
+or Git. Never track `.superpowers/` or `tests/`. The 65-minute Ansible proof is
+manual and opt-in; it remains controller-local and uses an explicit renewal
+checkpoint rather than transparent refresh inside a running OCI module.
 
 `init` may download providers. Do not run `plan`, `apply`, or `destroy` locally
 against a real tenancy unless that action is expressly authorized and the

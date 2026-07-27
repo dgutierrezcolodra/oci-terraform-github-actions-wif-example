@@ -1,9 +1,21 @@
 name: OCI Ansible WIF credentials
 description: Exchange a GitHub workload identity token for ephemeral OCI security-token credentials.
 
+outputs:
+  config_path:
+    description: Protected OCI config path for oracle.oci.
+    value: ${{ steps.credentials.outputs.config_path }}
+  security_token_path:
+    description: Protected OCI security-token path.
+    value: ${{ steps.credentials.outputs.security_token_path }}
+  private_key_path:
+    description: Protected ephemeral private-key path.
+    value: ${{ steps.credentials.outputs.private_key_path }}
+
 runs:
   using: composite
   steps:
     - name: Create OCI Ansible security-token credentials
+      id: credentials
       shell: bash
       run: python3 "$GITHUB_ACTION_PATH/main.py"
