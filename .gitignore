@@ -46,3 +46,6 @@ __pycache__/
 
 # Keep local verification tests out of the repository
 tests/
+
+# Keep repository-specific agent instructions local
+/AGENTS.md

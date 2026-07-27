@@ -115,9 +115,8 @@ python3 -m py_compile \
   .github/actions/ansible-oci-wif/main.py
 ```
 
-Local tests remain outside Git exactly as required by `AGENTS.md`. Do not add,
-stage, upload, or reference local test files from tracked automation. Never
-track `.superpowers/` or `tests/`.
+Local tests remain outside Git. Do not add, stage, upload, or reference local
+test files from tracked automation. Never track `.superpowers/` or `tests/`.
 
 ### Terraform examples
 
