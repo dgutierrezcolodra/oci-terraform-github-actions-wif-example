@@ -195,7 +195,7 @@ gate. `apply-and-destroy` remains an explicit manual workflow choice. If you
 store non-sensitive values as repository variables, change their workflow
 references from `secrets.NAME` to `vars.NAME`.
 
-For repositories migrated from the original example, only the Terraform workflows also accept the legacy combined `OIDC_CLIENT_IDENTIFIER` secret in `client_id:client_secret` format. `OCI_WIF_CLIENT_ID` and `OCI_WIF_CLIENT_SECRET` take precedence when both forms exist. The Ansible workflow requires the separate credentials.
+For repositories migrated from the original example, the Terraform workflows also accept the legacy combined `OIDC_CLIENT_IDENTIFIER` secret in `client_id:client_secret` format. `OCI_WIF_CLIENT_ID` and `OCI_WIF_CLIENT_SECRET` take precedence when both forms exist. The Ansible workflow does not use that combined secret; it accepts the repository's existing separate `CLIENT_ID` and `CLIENT_SECRET` pair only when the preferred names are absent. New clients should use the preferred names.
 
 The old `OCI_TENANCY` secret is no longer used. Provider 8.24.0 obtains the tenancy from the exchanged UPST.
 
@@ -216,9 +216,10 @@ Run `apply-and-destroy` only after the plan succeeds. It creates and removes the
 ## 8. Verify Ansible collection access
 
 From the `main` branch, run **Demo Ansible WIF Namespace Validation** as a
-manual, read-only check. It uses the same repository Actions secrets
-`OCI_WIF_CLIENT_ID`, `OCI_WIF_CLIENT_SECRET`, `DOMAIN_BASE_URL`, and
-`OCI_REGION` described above.
+manual, read-only check. It uses `OCI_WIF_CLIENT_ID`, `OCI_WIF_CLIENT_SECRET`,
+`DOMAIN_BASE_URL`, and `OCI_REGION` described above. For migrated repositories
+only, its separate legacy `CLIENT_ID` and `CLIENT_SECRET` pair is accepted
+when the preferred names are absent.
 
 `oracle.oci` does not consume the OCI Terraform provider's native WIF configuration directly. The workflow uses the local `ansible-oci-wif/` bridge only for Ansible: it exchanges the GitHub OIDC token for ephemeral security-token credentials used by the collection's namespace facts module. This is not an OCI API-key fallback, and no user API key or `~/.oci/config` is used.
 
