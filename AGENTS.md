@@ -7,9 +7,10 @@ turn it into an API-key based deployment template.
 
 ## Component map
 
-- `github-oidc-token/`: composite action that requests a GitHub OIDC JWT and
-  writes it atomically to a protected file. It can refresh only the source JWT
-  for long Terraform runs.
+- `github-oidc-token/`: composite action that uses official GitHub Script to
+  request a GitHub OIDC JWT once and write it atomically to a protected file.
+- `github-oidc-token-refresh/`: custom extension that refreshes only the
+  source JWT for the opt-in long-running Terraform workflow.
 - `terraform/`: OCI bucket validation example. The provider uses native
   `WorkloadIdentityFederation` authentication.
 - `examples/long-running-refresh/`: Terraform workload used to exercise source
@@ -79,7 +80,7 @@ For the token-refresh demo, assert a real file timestamp change (not merely two
 ## Version and dependency policy
 
 - Terraform: support the version declared in `terraform/versions.tf` (currently
-  Terraform `>= 1.5.0`) and OCI provider `>= 8.23.0, < 9.0.0`. The minimum
+  Terraform `>= 1.5.0`) and OCI provider `>= 8.24.0, < 9.0.0`. The minimum
   provider version must be the version that introduced native WIF support.
 - OCI Python SDK: pin it in the Ansible workflow/requirements to a version
   verified with `TokenExchangeSigner`; update its test coverage when changing
@@ -101,7 +102,7 @@ hand-edit lock hashes or leave a lock version below the declared minimum.
 Run the checks applicable to the changed files before committing:
 
 ```bash
-python3 -m py_compile github-oidc-token/main.py ansible-oci-wif/main.py
+python3 -m py_compile github-oidc-token-refresh/main.py ansible-oci-wif/main.py
 terraform fmt -check -recursive
 terraform -chdir=terraform init -backend=false
 terraform -chdir=terraform validate

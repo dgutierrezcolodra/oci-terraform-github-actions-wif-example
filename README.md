@@ -16,7 +16,7 @@ Provider 8.24.0 performs those operations itself:
 4. The provider signs OCI API requests with the matching private key.
 5. The provider renews the UPST and key together when required.
 
-The small local action in `github-oidc-token/` only obtains the GitHub JWT and writes it atomically. It never creates OCI credentials.
+The normal local action in `github-oidc-token/` uses official `actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3` (`v9.0.0`) to obtain the GitHub JWT. It writes the JWT atomically below `RUNNER_TEMP`, exports only its path, does not refresh it, and never creates OCI credentials. The standard Terraform and Ansible workflows use this one-shot action.
 
 ## Architecture
 
@@ -105,14 +105,13 @@ The example intentionally keeps Terraform state local to the job. It does not su
 
 ## Long-running Terraform operations
 
-The OCI provider automatically renews its OCI UPST, but it cannot call GitHub to replace an expired source JWT. For a long Terraform process, the local action can refresh only the GitHub JWT file:
+The OCI provider automatically renews its OCI UPST, but it cannot call GitHub to replace an expired source JWT. For a long Terraform process, the custom `github-oidc-token-refresh/` extension can refresh only the GitHub JWT file:
 
 ```yaml
 - name: Create refreshable GitHub OIDC token file
-  uses: ./github-oidc-token
+  uses: ./github-oidc-token-refresh
   with:
     audience: https://cloud.oracle.com
-    enable_token_refresh: true
     refresh_interval_minutes: 1
 ```
 
@@ -136,6 +135,8 @@ The **Demo Terraform Token Refresh** workflow defaults to a two-minute smoke tes
 ├── ansible-oci-wif/
 ├── examples/long-running-refresh/
 ├── github-oidc-token/
+│   └── action.yml
+├── github-oidc-token-refresh/
 │   ├── action.yml
 │   └── main.py
 ├── terraform/
@@ -158,7 +159,7 @@ The **Demo Terraform Token Refresh** workflow defaults to a two-minute smoke tes
 
 Run **Demo Ansible WIF Namespace Validation** manually to verify read-only Object Storage namespace access. Its job uses the protected `oci-validation` environment and the same `OCI_WIF_CLIENT_ID`, `OCI_WIF_CLIENT_SECRET`, `DOMAIN_BASE_URL`, and `OCI_REGION` secrets as the Terraform workflows.
 
-The `oracle.oci` collection does not directly support the provider's native WIF configuration. This repository therefore uses `ansible-oci-wif/` as an **Ansible-only bridge**: it exchanges the GitHub OIDC token and writes short-lived security-token credentials only under the runner temporary directory. The workflow deletes those credentials in its always-run cleanup step. It does not use an OCI API-key fallback.
+The `oracle.oci` collection does not directly support the provider's native WIF configuration. This repository therefore uses `ansible-oci-wif/` as the Oracle SDK **Ansible-only compatibility bridge**: it exchanges the one-shot GitHub OIDC token and writes short-lived security-token credentials only under the runner temporary directory. The workflow deletes those credentials in its always-run cleanup step. It does not use an OCI API-key fallback.
 
 ## References
 

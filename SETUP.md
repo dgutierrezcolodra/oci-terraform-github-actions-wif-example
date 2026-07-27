@@ -221,6 +221,8 @@ For repositories migrated from the original example, the workflows also accept t
 
 The old `OCI_TENANCY` secret is no longer used. Provider 8.24.0 obtains the tenancy from the exchanged UPST.
 
+The standard Terraform and Ansible workflows obtain their source JWT once through `github-oidc-token/`. That action uses official `actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3` (`v9.0.0`), writes the JWT atomically below `RUNNER_TEMP`, exports only its path, and does not refresh it. `ansible-oci-wif/` remains the Oracle SDK compatibility bridge for the Ansible collection.
+
 ## 7. Verify with a plan
 
 Run **Demo Terraform Apply (Standard)** with action `plan`. A successful run should show:
@@ -242,14 +244,13 @@ The **Demo Ansible WIF Namespace Validation** workflow is a manual, read-only ch
 
 The provider renews the OCI UPST automatically and rotates the associated RSA key. It rereads `OCI_WORKLOAD_IDENTITY_TOKEN_PATH` when it needs another exchange.
 
-GitHub JWTs are also short-lived. For a Terraform process that can exceed the OCI UPST lifetime, enable the local action's source-token refresh:
+GitHub JWTs are also short-lived. For a Terraform process that can exceed the OCI UPST lifetime, use the custom `github-oidc-token-refresh/` extension to refresh the source token:
 
 ```yaml
 - name: Create refreshable GitHub OIDC token file
-  uses: ./github-oidc-token
+  uses: ./github-oidc-token-refresh
   with:
     audience: https://cloud.oracle.com
-    enable_token_refresh: true
     refresh_interval_minutes: 1
 ```
 
@@ -282,7 +283,7 @@ Required provider variables are documented in [README.md](./README.md#terraform-
 
 ### Long run fails after the initial OCI token expires
 
-Enable `enable_token_refresh`; **Demo Terraform Token Refresh** records the initial token-file modification time and fails unless the final time is strictly greater. GitHub OIDC JWTs expire roughly 5 minutes after issuance (observed behavior; GitHub does not document the lifetime officially), which is why the action only accepts refresh intervals between 1 and 4 minutes. Never print the token contents.
+Use `github-oidc-token-refresh/` only for **Demo Terraform Token Refresh**, which records the initial token-file modification time and fails unless the final time is strictly greater. GitHub OIDC JWTs expire roughly 5 minutes after issuance (observed behavior; GitHub does not document the lifetime officially), which is why the extension accepts refresh intervals between 1 and 4 minutes. Never print the token contents.
 
 ## References
 
