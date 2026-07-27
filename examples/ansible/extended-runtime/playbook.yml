@@ -10,7 +10,7 @@
     security_token_path: "{{ lookup('env', 'OCI_ANSIBLE_SECURITY_TOKEN_FILE') }}"
     private_key_path: "{{ lookup('env', 'OCI_ANSIBLE_PRIVATE_KEY_FILE') }}"
   tasks:
-    - name: Validate the selected checkpoint duration
+    - name: Validate the selected renewal delay
       ansible.builtin.assert:
         that:
           - wif_wait_seconds | int in [120, 3900]
@@ -46,28 +46,28 @@
         continuity_marker: active
       no_log: true
 
-    - name: Inspect the source JWT before the checkpoint
+    - name: Inspect the source JWT before credential renewal
       ansible.builtin.stat:
         path: "{{ source_jwt_path }}"
         get_checksum: false
       register: source_jwt_before
       no_log: true
 
-    - name: Inspect the security token before the checkpoint
+    - name: Inspect the security token before credential renewal
       ansible.builtin.stat:
         path: "{{ security_token_path }}"
         get_checksum: false
       register: security_token_before
       no_log: true
 
-    - name: Inspect the private key before the checkpoint
+    - name: Inspect the private key before credential renewal
       ansible.builtin.stat:
         path: "{{ private_key_path }}"
         get_checksum: false
       register: private_key_before
       no_log: true
 
-    - name: Validate the credential files before the checkpoint
+    - name: Validate the credential files before renewal
       ansible.builtin.assert:
         that:
           - source_jwt_before.stat.exists
@@ -90,7 +90,7 @@
       ansible.builtin.debug:
         msg: OCI namespace access validated before credential renewal.
 
-    - name: Wait for the selected checkpoint duration
+    - name: Wait for the selected renewal delay
       ansible.builtin.pause:
         seconds: "{{ wif_wait_seconds | int }}"
       no_log: true
@@ -117,28 +117,28 @@
       ansible.builtin.debug:
         msg: OCI credentials renewed between module tasks.
 
-    - name: Inspect the source JWT after the checkpoint
+    - name: Inspect the source JWT after credential renewal
       ansible.builtin.stat:
         path: "{{ source_jwt_path }}"
         get_checksum: false
       register: source_jwt_after
       no_log: true
 
-    - name: Inspect the security token after the checkpoint
+    - name: Inspect the security token after credential renewal
       ansible.builtin.stat:
         path: "{{ security_token_path }}"
         get_checksum: false
       register: security_token_after
       no_log: true
 
-    - name: Inspect the private key after the checkpoint
+    - name: Inspect the private key after credential renewal
       ansible.builtin.stat:
         path: "{{ private_key_path }}"
         get_checksum: false
       register: private_key_after
       no_log: true
 
-    - name: Validate credential continuity after the checkpoint
+    - name: Validate credential continuity after renewal
       ansible.builtin.assert:
         that:
           - source_jwt_after.stat.mtime > source_jwt_before.stat.mtime

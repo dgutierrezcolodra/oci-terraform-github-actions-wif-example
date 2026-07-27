@@ -107,7 +107,7 @@ For the token-refresh demo, assert a real file timestamp change (not merely two
 - Terraform: support the version declared in
   `examples/terraform/standard/versions.tf` (currently Terraform `>= 1.5.0`)
   and OCI provider `>= 8.24.0, < 9.0.0`. Generic WIF first appeared in 8.22.0,
-  but 8.24.0 is this repository's certified minimum and locked baseline. Do
+  but 8.24.0 is this repository's validated minimum and locked baseline. Do
   not lower or raise that baseline without end-to-end validation.
 - OCI Python SDK: pin it in the Ansible workflow to a version verified with
   `TokenExchangeSigner`; update its test coverage when changing it.

@@ -23,7 +23,7 @@ key, fingerprint, user OCID, and long-lived signing key from CI.
 
 Generic `WorkloadIdentityFederation` authentication became available in OCI
 Terraform provider 8.22.0. This repository requires, locks, and validates
-provider 8.24.0 as its certified baseline.
+provider 8.24.0 as its validated baseline.
 
 ## When to use this pattern
 
@@ -84,11 +84,14 @@ refresh action is shared by both extended examples. Terraform uses native
 provider WIF; the Ansible adapter exists because the `oracle.oci` collection
 does not consume that provider configuration.
 
-## Certified Terraform baseline
+## Validated Terraform baseline
 
 The generic WIF capability was [introduced in provider
 8.22.0](https://github.com/oracle/terraform-provider-oci/blob/v8.22.0/CHANGELOG.md).
-This reference deliberately uses 8.24.0 as the minimum and selected version:
+This reference keeps 8.24.0 as its minimum because that is the version
+validated end to end across the standard and extended Terraform workflows and
+recorded in both dependency lock files. With that validated baseline, the
+provider performs the native flow:
 
 1. Terraform reads the GitHub OIDC JWT from a protected file.
 2. The provider generates an ephemeral RSA key pair.

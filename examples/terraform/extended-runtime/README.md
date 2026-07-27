@@ -20,6 +20,6 @@ terraform -chdir=examples/terraform/extended-runtime validate
 
 No OCI resources are created by this example. The `time_sleep` resource exists only to keep the Terraform process active between the two OCI data-source calls.
 
-This source-JWT refresh flow is the certified extended Terraform path.
+This source-JWT refresh flow is the validated extended Terraform path.
 Long-running Ansible uses the separate task-boundary adapter documented in
 `examples/ansible/extended-runtime/README.md`.

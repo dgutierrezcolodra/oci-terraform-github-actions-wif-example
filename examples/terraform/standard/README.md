@@ -3,7 +3,7 @@
 This root module creates one private Object Storage bucket and validates native OCI Workload Identity Federation authentication.
 
 Generic WIF support first appeared in OCI provider 8.22.0. This module requires
-and locks provider 8.24.0 as the repository's certified baseline.
+and locks provider 8.24.0 as the repository's validated baseline.
 Authentication settings come from the GitHub workflow environment; no
 `~/.oci/config`, OCI API key, or externally generated OCI session token is
 used.

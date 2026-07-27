@@ -3,7 +3,7 @@
 *Current on 27 July 2026*
 
 This guide configures GitHub Actions as an external workload identity for the
-repository's certified OCI Terraform provider 8.24.0 baseline. Generic WIF
+repository's validated OCI Terraform provider 8.24.0 baseline. Generic WIF
 support first appeared in provider 8.22.0, but this reference requires and
 locks 8.24.0. The runtime workflow is non-interactive and does not use OCI user
 API keys.
