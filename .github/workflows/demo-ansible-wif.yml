@@ -28,11 +28,11 @@ jobs:
         shell: bash
         run: |
           python -m venv "$RUNNER_TEMP/oci-ansible-wif-venv"
-          "$RUNNER_TEMP/oci-ansible-wif-venv/bin/python" -m pip install --upgrade pip
-          "$RUNNER_TEMP/oci-ansible-wif-venv/bin/python" -m pip install ansible-core "oci==2.182.1"
+          "$RUNNER_TEMP/oci-ansible-wif-venv/bin/python" -m pip install "ansible-core==2.15.13" "oci==2.182.1"
           "$RUNNER_TEMP/oci-ansible-wif-venv/bin/ansible-galaxy" collection install \
             --collections-path "$RUNNER_TEMP/oci-ansible-collections" \
             --requirements-file ansible/requirements.yml
+          echo "$RUNNER_TEMP/oci-ansible-wif-venv/bin" >> "$GITHUB_PATH"
 
       - name: Create GitHub OIDC token file
         uses: ./github-oidc-token
@@ -45,14 +45,7 @@ jobs:
           WIF_DOMAIN_URL: ${{ secrets.DOMAIN_BASE_URL }}
           WIF_CLIENT_ID: ${{ secrets.OCI_WIF_CLIENT_ID }}
           WIF_CLIENT_SECRET: ${{ secrets.OCI_WIF_CLIENT_SECRET }}
-          WIF_CLIENT_IDENTIFIER: ${{ secrets.OIDC_CLIENT_IDENTIFIER }}
         run: |
-          if [[ -z "$WIF_CLIENT_ID" || -z "$WIF_CLIENT_SECRET" ]]; then
-            if [[ "$WIF_CLIENT_IDENTIFIER" == *:* ]]; then
-              WIF_CLIENT_ID=${WIF_CLIENT_IDENTIFIER%%:*}
-              WIF_CLIENT_SECRET=${WIF_CLIENT_IDENTIFIER#*:}
-            fi
-          fi
           if [[ -z "$WIF_CLIENT_ID" || -z "$WIF_CLIENT_SECRET" ]]; then
             echo 'Missing OCI WIF client credentials' >&2
             exit 1
@@ -79,4 +72,4 @@ jobs:
       - name: Remove OCI Ansible WIF credentials
         if: always()
         shell: bash
-        run: rm -rf "$RUNNER_TEMP/oci-ansible-wif"
+        run: rm -rf "$RUNNER_TEMP/oci-ansible-wif" "$RUNNER_TEMP/oci-wif" "$RUNNER_TEMP/oci-ansible-wif-venv" "$RUNNER_TEMP/oci-ansible-collections"
