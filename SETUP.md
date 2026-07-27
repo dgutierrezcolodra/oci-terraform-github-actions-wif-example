@@ -2,7 +2,19 @@
 
 *Current on 27 July 2026*
 
-This guide configures GitHub Actions as an external workload identity for OCI Terraform provider 8.24.0 or later. The runtime workflow is non-interactive and does not use OCI user API keys.
+This guide configures GitHub Actions as an external workload identity for the
+repository's certified OCI Terraform provider 8.24.0 baseline. Generic WIF
+support first appeared in provider 8.22.0, but this reference requires and
+locks 8.24.0. The runtime workflow is non-interactive and does not use OCI user
+API keys.
+
+Use this setup for GitHub-hosted runners or self-hosted runners outside OCI. If
+the runner is an OCI Compute instance, prefer [Instance
+Principals](https://docs.oracle.com/en-us/iaas/Content/Identity/Tasks/callingservicesfrominstances.htm).
+If it runs as a pod in an enhanced OKE cluster, prefer [OKE Workload
+Identity](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contenggrantingworkloadaccesstoresources.htm).
+Generic WIF is the safe external-runner alternative when neither OCI-native
+identity is available.
 
 ## Before you start
 
@@ -89,25 +101,25 @@ The GitHub issuer is:
 https://token.actions.githubusercontent.com
 ```
 
-With GitHub's default subject format, a workflow running from `main` without a
-job-level environment has this subject:
+With GitHub's default subject format, a workflow running from a branch without
+a job-level environment has this subject:
+
+```text
+repo:<owner>/<repository>:ref:refs/heads/<protected-branch>
+```
+
+The checked-in workflows use `main`, so their default subject is:
 
 ```text
 repo:<owner>/<repository>:ref:refs/heads/main
 ```
 
-For this repository, the existing trust uses:
-
-```text
-repo:dgutierrezcolodra/oci-terraform-github-actions-wif-example:ref:refs/heads/main
-```
-
-Use the exact repository name and ref, including case. The three cloud jobs in
-this repository intentionally declare no GitHub environment and use no OIDC
-subject customization. A job-level environment would replace the ref in
-GitHub's default `sub`, so it would not match this trust. Real WIF executions
-must run from `main`; feature-branch runs are limited to offline validation
-until merged.
+Use the exact repository name and protected branch, including case. When
+copying the reference, replace `main` consistently in the workflow invocation
+and trust if you use another protected deployment branch. The cloud jobs
+intentionally declare no GitHub environment and use no OIDC subject
+customization. A job-level environment changes GitHub's default `sub`, so it
+would not match this branch rule.
 
 ## 5. Create the Identity Propagation Trust
 
@@ -147,9 +159,10 @@ POST <DOMAIN_URL>/admin/v1/IdentityPropagationTrusts
 }
 ```
 
-The example authorizes only `main`. Do not add a temporary branch mapping or
-change the GitHub OIDC subject for this example. Merge and then dispatch the
-real WIF workflows from `main`.
+The payload authorizes only `main`. Replace that branch consistently if your
+deployment branch has another name. Do not add temporary branch mappings or
+wildcards to make a run pass; update the single exact mapping through your
+normal change-control process.
 
 `clientClaimName` and `clientClaimValues` restrict the token audience. `impersonationServiceUsers` independently restricts which GitHub subjects may impersonate the service user. Both controls are intentional.
 
@@ -198,6 +211,10 @@ references from `secrets.NAME` to `vars.NAME`.
 Provider 8.24.0 obtains tenancy context from the exchanged UPST; do not add a
 separate tenancy secret to these references.
 
+The Terraform workflows pass `CLIENT_SECRET` only to the steps that call the
+configured provider. They mask it before shell use and do not persist it
+through `GITHUB_ENV`.
+
 The standard Terraform and Ansible workflows obtain their source JWT once
 through `.github/actions/github-oidc-token`. That action uses official
 `actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3` (`v9.0.0`),
@@ -211,11 +228,12 @@ action outputs are the protected config, security-token, and private-key paths.
 
 ## 7. Verify with a plan
 
-From the `main` branch, run **Demo Terraform Apply (Standard)** with action
-`plan`. A successful run should show:
+From the branch configured in the trust, run **Demo Terraform Apply
+(Standard)** with action `plan`. In this repository that branch is `main`. A
+successful run should show:
 
 - The GitHub OIDC token file was created.
-- Terraform installed OCI provider 8.24.0 or a compatible 8.x release.
+- Terraform selected the locked OCI provider 8.24.0 baseline.
 - Terraform completed the OCI data-source reads and produced a plan.
 - No `~/.oci/config`, OCI private key, or OCI security-token file was created by the workflow.
 
@@ -223,9 +241,9 @@ Run `apply-and-destroy` only after the plan succeeds. It creates and removes the
 
 ## 8. Verify Ansible collection access
 
-From the `main` branch, run **Demo Ansible WIF Namespace Validation** as a
-manual, read-only check. It uses `CLIENT_ID`, `CLIENT_SECRET`,
-`DOMAIN_BASE_URL`, and `OCI_REGION` described above.
+From the branch configured in the trust, run **Demo Ansible WIF Namespace
+Validation** as a manual, read-only check. It uses `CLIENT_ID`,
+`CLIENT_SECRET`, `DOMAIN_BASE_URL`, and `OCI_REGION` described above.
 
 `oracle.oci` does not consume the OCI Terraform provider's native WIF
 configuration directly. The workflow uses the local
@@ -234,17 +252,27 @@ GitHub OIDC token for ephemeral security-token credentials used by the
 collection's namespace facts module. This is not an OCI API-key fallback, and
 no user API key or `~/.oci/config` is used.
 
+The workflow installs `oracle.oci` 5.6.0 from the pinned Git commit in
+`examples/ansible/requirements.yml` because that version is not published to
+Ansible Galaxy. The runner therefore needs `git`, and this installation does
+not use Galaxy collection-signature verification. Review the pinned source
+commit before updating it.
+
 For **Demo Ansible WIF Credential Renewal**, use
 `.github/actions/github-oidc-token-refresh`, `.github/actions/ansible-oci-wif`,
 `examples/ansible/requirements.yml`, and
 `examples/ansible/extended-runtime`. The source-JWT refresher is shared with
-extended Terraform. At an explicit renewal checkpoint, Ansible synchronously rematerializes the OCI UPST and matching private key together; later `oracle.oci` module tasks load the renewed files. One already-running OCI module retains its in-memory signer and is not transparently refreshed by file replacement.
+extended Terraform. Between module tasks, the playbook runs the adapter again
+and replaces the OCI UPST and matching private key together. Later `oracle.oci`
+tasks load the renewed files. One already-running module retains its in-memory
+signer and is not refreshed by file replacement.
 
 The controller-local proof distributes no credentials to managed hosts and
 creates, updates, or deletes no OCI resource. For a long service operation,
 submit asynchronously with `wait: false`, renew at a later task boundary, then
 use facts/status tasks. Its proof modes are 120 seconds and 65 minutes; the 65-minute
-run is manual and opt-in. This is a compatibility blueprint, not `native Ansible WIF`.
+run is manual and opt-in. This remains an Ansible adapter pattern rather than
+native WIF support in the collection.
 
 ## Long-running processes
 
@@ -273,8 +301,8 @@ The refresh action stores its daemon PID in a protected file beside the source J
 
 Decode the current GitHub JWT payload without logging the complete token.
 Compare its `iss`, `aud`, and `sub` with the trust. Confirm the workflow ran
-from `main`, the repository name and ref match exactly, and the job has no
-`environment:` declaration.
+from the configured protected branch, the repository name and ref match
+exactly, and the job has no `environment:` declaration.
 
 ### No unique trust
 
@@ -306,6 +334,7 @@ between 1 and 4 minutes. Never print the token contents.
 
 ## References
 
+- [OCI Terraform provider 8.22.0 changelog](https://github.com/oracle/terraform-provider-oci/blob/v8.22.0/CHANGELOG.md)
 - [OCI JWT-to-UPST exchange](https://docs.oracle.com/en-us/iaas/Content/Identity/api-getstarted/json_web_token_exchange.htm)
 - [Oracle Core Technology blog: WIF with Microsoft Entra ID and Keycloak](https://blogs.oracle.com/coretec/oci-workload-identity-federation-wif-with-microsoft-entra-id-applications-and-keycloak)
 - [OCI IdentityPropagationTrust model](https://docs.oracle.com/en-us/iaas/tools/python/latest/api/identity_domains/models/oci.identity_domains.models.IdentityPropagationTrust.html)

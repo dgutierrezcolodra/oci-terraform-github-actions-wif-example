@@ -22,8 +22,8 @@ turn it into an API-key based deployment template.
 - `examples/ansible/requirements.yml`: shared pinned collection requirements.
 - `examples/ansible/namespace-validation/`: read-only Ansible Object Storage
   namespace validation.
-- `examples/ansible/extended-runtime/`: controller-local explicit renewal
-  checkpoint proof for the Ansible compatibility blueprint.
+- `examples/ansible/extended-runtime/`: controller-local proof that renews
+  temporary Ansible credentials between module tasks.
 - `tests/`: local-only test workspace. It must remain outside version control;
   do not add, commit, upload, or reference its files from tracked automation.
   Keep credential-handling checks deterministic and offline when running them
@@ -43,18 +43,22 @@ from `OCI_WORKLOAD_IDENTITY_TOKEN_PATH`, generates its own ephemeral key, and
 exchanges the JWT for and renews the OCI UPST. Do not generate, persist, or
 inject an OCI private key or security token for Terraform.
 
+Use this generic WIF pattern for GitHub-hosted runners or self-hosted runners
+outside OCI. Prefer Instance Principals for a runner on OCI Compute and OKE
+Workload Identity for a runner pod in an enhanced OKE cluster.
+
 The `oracle.oci` Ansible collection does not use that native provider flow. The
 `ansible-oci-wif` helper reads the same short-lived GitHub JWT, uses the OCI
 Python SDK token-exchange signer, and creates an OCI-collection-compatible
 security token, matching ephemeral key, and config file for the job only. It
 exports `OCI_CONFIG_FILE`, `OCI_ANSIBLE_AUTH_TYPE=security_token`,
 `OCI_ANSIBLE_SECURITY_TOKEN_FILE`, and `OCI_ANSIBLE_PRIVATE_KEY_FILE` through
-`GITHUB_ENV`, with protected config/token/key path action outputs. At an
-explicit renewal checkpoint it rematerializes the OCI UPST and matching private
-key together; later module tasks load the renewed files. An already-running
-module retains its in-memory signer. Treat this as a narrow, controller-local
-compatibility blueprint, not native Ansible WIF; never reuse or distribute its
-generated files outside the runner/job.
+`GITHUB_ENV`, with protected config/token/key path action outputs. Between
+module tasks it can replace the OCI UPST and matching private key together;
+later tasks load the renewed files. An already-running module retains its
+in-memory signer. Treat this as a narrow, controller-local adapter until the
+collection supports WIF natively; never reuse or distribute its generated files
+outside the runner/job.
 
 ## Non-negotiable security rules
 
@@ -90,6 +94,11 @@ upload local state or credentials as artifacts. Changes to workflows must keep
 every third-party action pinned to a full immutable commit SHA; update the
 inline version comment at the same time.
 
+The standard Terraform push trigger must cover only its example, its OIDC
+action, and its own workflow file. Do not let unrelated workflow changes start
+a real OCI plan. Pass `CLIENT_SECRET` only to steps that call the configured
+provider; never persist it through `GITHUB_ENV`.
+
 For the token-refresh demo, assert a real file timestamp change (not merely two
 `stat` outputs) and keep the long, 65-minute provider-renewal test opt-in.
 
@@ -97,13 +106,16 @@ For the token-refresh demo, assert a real file timestamp change (not merely two
 
 - Terraform: support the version declared in
   `examples/terraform/standard/versions.tf` (currently Terraform `>= 1.5.0`)
-  and OCI provider `>= 8.24.0, < 9.0.0`. The minimum provider version must be
-  the version that introduced native WIF support.
+  and OCI provider `>= 8.24.0, < 9.0.0`. Generic WIF first appeared in 8.22.0,
+  but 8.24.0 is this repository's certified minimum and locked baseline. Do
+  not lower or raise that baseline without end-to-end validation.
 - OCI Python SDK: pin it in the Ansible workflow to a version verified with
   `TokenExchangeSigner`; update its test coverage when changing it.
 - Ansible: pin the `oracle.oci` collection in
   `examples/ansible/requirements.yml`. Do not silently float collection or SDK
-  versions.
+  versions. Version 5.6.0 is installed from an exact Git commit because it is
+  not published to Galaxy; document that this requires `git` and does not use
+  Galaxy signature verification.
 - When upstream OCI support changes, first verify whether native Ansible WIF is
   available. If it is, remove the bridge only after an end-to-end replacement
   is verified and documented.
@@ -141,8 +153,8 @@ it is ignored). Run them only from an untracked working directory or another
 local test harness; do not add test files, test commands that require tracked
 test files, test reports, or generated credentials to GitHub Actions artifacts
 or Git. Never track `.superpowers/` or `tests/`. The 65-minute Ansible proof is
-manual and opt-in; it remains controller-local and uses an explicit renewal
-checkpoint rather than transparent refresh inside a running OCI module.
+manual and opt-in; it remains controller-local and renews credentials between
+tasks rather than inside a running OCI module.
 
 `init` may download providers. Do not run `plan`, `apply`, or `destroy` locally
 against a real tenancy unless that action is expressly authorized and the

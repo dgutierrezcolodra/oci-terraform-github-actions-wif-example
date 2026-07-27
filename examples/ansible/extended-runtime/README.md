@@ -1,24 +1,23 @@
-# OCI Ansible WIF extended-runtime checkpoint proof
+# OCI Ansible WIF extended-runtime renewal proof
 
-This controller-local, single-play example shows the explicit checkpoint model
-for a long-running `oracle.oci` workflow. It performs only read-only Object
-Storage namespace facts calls; it creates no OCI resources and accepts no
-compartment or resource identifier.
+This controller-local, single-play example shows how to renew the temporary
+credentials between `oracle.oci` module tasks. It performs only read-only
+Object Storage namespace facts calls; it creates no OCI resources and accepts
+no compartment or resource identifier.
 
 The playbook accepts only two proof durations: `120` seconds for a smoke test
 and `3900` seconds for the opt-in extended proof. Before the pause it records
 credential-file metadata and validates a namespace call. After the pause it
 runs the trusted `.github/actions/ansible-oci-wif/main.py` adapter synchronously
 in the same playbook, then verifies that the source JWT advanced and that the
-OCI security token and private key were atomically rematerialized. It makes a
-second read-only namespace call after that checkpoint.
+OCI security token and private key were replaced together. It makes a second
+read-only namespace call after the renewal.
 
-This is deliberately an explicit boundary, not transparent mid-module token
-rotation. For a long OCI operation, use `wait: false` and a later facts or
-status-task pattern: allow the first task to return, checkpoint and
-rematerialize credentials, then use a subsequent task to inspect status. One
-already-running Ansible module retains its in-memory signer and cannot be
-updated by this playbook.
+This is deliberately a task boundary, not transparent token rotation inside a
+running module. For a long OCI operation, use `wait: false` and a later facts
+or status-task pattern: allow the first task to return, renew credentials, then
+use a subsequent task to inspect status. One already-running Ansible module
+retains its in-memory signer and cannot be updated by this playbook.
 
 ## Copy set
 
@@ -30,12 +29,14 @@ Copy these paths together:
 - `examples/ansible/extended-runtime/`
 - `.github/workflows/demo-ansible-extended.yml`
 
-Install the pinned collection from `examples/ansible/requirements.yml`. Both
-the `120`-second smoke proof and `3900`-second extended proof require a
-one-minute source-JWT refresh interval. Do not rely on the action's default `3`
-minutes: it cannot establish the required source-JWT change during the
-`120`-second checkpoint. The canonical extended workflow sets the interval
-explicitly:
+`oracle.oci` 5.6.0 is not published to Ansible Galaxy, so the requirements file
+pins Oracle's source tag to an exact Git commit. Installation requires `git` on
+the controller and does not use Galaxy collection-signature verification.
+
+Both the `120`-second smoke proof and `3900`-second extended proof require a
+one-minute source-JWT refresh interval. Do not rely on the action's default
+three minutes: it cannot establish the required source-JWT change during the
+120-second pause. The canonical extended workflow sets the interval explicitly:
 
 ```yaml
 - name: Create a refreshable GitHub OIDC token file

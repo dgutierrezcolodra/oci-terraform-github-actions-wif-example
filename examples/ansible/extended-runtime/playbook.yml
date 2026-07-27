@@ -1,5 +1,5 @@
 ---
-- name: Prove OCI Ansible WIF credential rematerialization at an explicit checkpoint
+- name: Prove OCI Ansible WIF credential renewal between module tasks
   hosts: localhost
   connection: local
   gather_facts: false
@@ -95,7 +95,7 @@
         seconds: "{{ wif_wait_seconds | int }}"
       no_log: true
 
-    - name: Rematerialize OCI Ansible WIF credentials
+    - name: Renew OCI Ansible WIF credentials
       ansible.builtin.command:
         argv:
           - "{{ ansible_playbook_python }}"
@@ -113,9 +113,9 @@
       changed_when: credential_renewal.rc == 0
       no_log: true
 
-    - name: Report credential rematerialization
+    - name: Report credential renewal
       ansible.builtin.debug:
-        msg: OCI credentials rematerialized inside the active playbook.
+        msg: OCI credentials renewed between module tasks.
 
     - name: Inspect the source JWT after the checkpoint
       ansible.builtin.stat:

@@ -2,7 +2,8 @@
 
 This module performs an OCI read, waits, and performs another OCI read in the same Terraform process.
 
-OCI provider 8.24.0 owns the OCI UPST and ephemeral RSA key. The
+The repository requires, locks, and validates OCI provider 8.24.0 for this
+example. The provider owns the OCI UPST and ephemeral RSA key. The
 `.github/actions/github-oidc-token-refresh` action refreshes only
 `OCI_WORKLOAD_IDENTITY_TOKEN_PATH`, using atomic replacement. When the provider
 needs a new UPST, it rereads the current GitHub JWT and rotates the OCI token
@@ -19,5 +20,6 @@ terraform -chdir=examples/terraform/extended-runtime validate
 
 No OCI resources are created by this example. The `time_sleep` resource exists only to keep the Terraform process active between the two OCI data-source calls.
 
-This source-JWT refresh reference is certified for extended Terraform only.
-Long-running Ansible is not transparently supported or claimed.
+This source-JWT refresh flow is the certified extended Terraform path.
+Long-running Ansible uses the separate task-boundary adapter documented in
+`examples/ansible/extended-runtime/README.md`.

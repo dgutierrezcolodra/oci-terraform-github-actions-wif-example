@@ -153,9 +153,9 @@ PYTHONPYCACHEPREFIX=/private/tmp/oci-wif-ansible-extended-pycache \
   python3 -m unittest -v tests.test_repository_layout tests.test_ansible_extended_runtime
 ```
 
-The extended Ansible proof is controller-local and uses an explicit renewal checkpoint:
-it rematerializes credentials between tasks, not transparently inside a running OCI module.
-Its 65-minute proof is manual and opt-in.
+The extended Ansible proof is controller-local and renews credentials between
+tasks, not inside a running OCI module. Its 65-minute proof is manual and
+opt-in.
 Keep `examples/ansible/requirements.yml`, `examples/ansible/extended-runtime`,
 and `.github/workflows/demo-ansible-extended.yml` aligned.
 

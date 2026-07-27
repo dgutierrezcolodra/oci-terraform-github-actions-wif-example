@@ -2,7 +2,15 @@
 
 This root module creates one private Object Storage bucket and validates native OCI Workload Identity Federation authentication.
 
-The module requires OCI provider 8.24.0 or later. Authentication settings come from the GitHub workflow environment; no `~/.oci/config`, OCI API key, or externally generated OCI session token is used.
+Generic WIF support first appeared in OCI provider 8.22.0. This module requires
+and locks provider 8.24.0 as the repository's certified baseline.
+Authentication settings come from the GitHub workflow environment; no
+`~/.oci/config`, OCI API key, or externally generated OCI session token is
+used.
+
+Use this generic WIF example for GitHub-hosted runners or self-hosted runners
+outside OCI. Prefer Instance Principals for a runner on OCI Compute and OKE
+Workload Identity for a runner pod in an enhanced OKE cluster.
 
 ## Files
 
@@ -41,4 +49,9 @@ directory in an independent always-run cleanup. The extended workflow also
 validates and stops the exact refresh daemon recorded by
 `.github/actions/github-oidc-token-refresh` before removing that directory.
 
-The existing trust matches `repo:<owner>/<repository>:ref:refs/heads/main`, so real WIF executions must run from `main`. The workflows read the `CLIENT_ID` and `CLIENT_SECRET` repository Actions secrets and intentionally declare no GitHub environment, preserving the default ref subject.
+The checked-in trust example matches
+`repo:<owner>/<repository>:ref:refs/heads/main`. When copying it, replace the
+owner, repository, and protected branch consistently. The workflow intentionally
+declares no GitHub environment, preserving the default branch-ref subject. It
+passes `CLIENT_SECRET` only to the Terraform provider steps and does not persist
+that secret through `GITHUB_ENV`.
