@@ -1,5 +1,5 @@
 name: GitHub OIDC token file
-description: Write a GitHub Actions OIDC JWT to a protected file for the OCI Terraform provider.
+description: Write a GitHub Actions OIDC JWT to a protected file for OCI WIF.
 
 inputs:
   audience:
@@ -10,17 +10,6 @@ inputs:
     description: Optional absolute output path. Defaults to RUNNER_TEMP/oci-wif/github-oidc.jwt.
     required: false
     default: ""
-  enable_token_refresh:
-    description: Refresh only the GitHub OIDC JWT file during long-running Terraform processes.
-    required: false
-    default: "false"
-  refresh_interval_minutes:
-    description: Minutes between GitHub OIDC JWT refreshes. Must stay below the
-      GitHub OIDC JWT lifetime (~5 minutes, not officially documented), so the
-      accepted range is 1-4.
-    required: false
-    default: "3"
-
 outputs:
   token_path:
     description: Absolute path containing the GitHub OIDC JWT.
@@ -31,10 +20,65 @@ runs:
   steps:
     - id: token
       name: Write GitHub OIDC token file
-      shell: bash
-      run: python3 "$GITHUB_ACTION_PATH/main.py"
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
       env:
-        INPUT_AUDIENCE: ${{ inputs.audience }}
-        INPUT_TOKEN_PATH: ${{ inputs.token_path }}
-        INPUT_ENABLE_TOKEN_REFRESH: ${{ inputs.enable_token_refresh }}
-        INPUT_REFRESH_INTERVAL_MINUTES: ${{ inputs.refresh_interval_minutes }}
+        OIDC_AUDIENCE: ${{ inputs.audience }}
+        OIDC_TOKEN_PATH: ${{ inputs.token_path }}
+      with:
+        script: |
+          const crypto = require('node:crypto')
+          const fs = require('node:fs')
+          const path = require('node:path')
+
+          const audience = process.env.OIDC_AUDIENCE
+          const runnerTemp = process.env.RUNNER_TEMP
+          const configuredPath = process.env.OIDC_TOKEN_PATH
+          if (!audience) {
+            throw new Error('OIDC audience cannot be empty')
+          }
+          if (!runnerTemp) {
+            throw new Error('RUNNER_TEMP is required')
+          }
+          if (configuredPath && !path.isAbsolute(configuredPath)) {
+            throw new Error('token_path must be absolute')
+          }
+
+          const tokenPath = configuredPath ||
+            path.join(runnerTemp, 'oci-wif', 'github-oidc.jwt')
+          const tokenDirectory = path.dirname(tokenPath)
+          fs.mkdirSync(tokenDirectory, { recursive: true, mode: 0o700 })
+          fs.chmodSync(tokenDirectory, 0o700)
+
+          const token = await core.getIDToken(audience)
+          if (!token) {
+            throw new Error('GitHub returned an empty OIDC token')
+          }
+
+          const temporaryPath = path.join(
+            tokenDirectory,
+            `.${path.basename(tokenPath)}.${process.pid}.${crypto.randomBytes(8).toString('hex')}`,
+          )
+          try {
+            const descriptor = fs.openSync(temporaryPath, 'wx', 0o600)
+            try {
+              fs.writeFileSync(descriptor, token, { encoding: 'utf8' })
+              fs.fsyncSync(descriptor)
+            } finally {
+              fs.closeSync(descriptor)
+            }
+            fs.renameSync(temporaryPath, tokenPath)
+            fs.chmodSync(tokenPath, 0o600)
+          } catch (error) {
+            try {
+              fs.unlinkSync(temporaryPath)
+            } catch (cleanupError) {
+              if (cleanupError.code !== 'ENOENT') {
+                core.warning('Could not remove temporary OIDC token file')
+              }
+            }
+            throw error
+          }
+
+          core.setOutput('token_path', tokenPath)
+          core.exportVariable('OCI_WORKLOAD_IDENTITY_TOKEN_PATH', tokenPath)
+          console.log('GitHub OIDC token file created')

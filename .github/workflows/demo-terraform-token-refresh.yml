@@ -32,11 +32,9 @@ jobs:
           terraform_version: "1.15.4"
 
       - name: Create refreshable GitHub OIDC token file
-        uses: ./github-oidc-token
+        uses: ./github-oidc-token-refresh
         with:
-          audience: https://cloud.oracle.com
-          enable_token_refresh: true
-          refresh_interval_minutes: 1
+          refresh_interval_minutes: "3"
 
       - name: Export OCI WIF configuration
         shell: bash
