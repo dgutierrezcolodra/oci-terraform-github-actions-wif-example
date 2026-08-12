@@ -33,6 +33,12 @@ sequenceDiagram
     Provider->>Domain: Renew UPST and key together when required
 ```
 
+The diagram shows the native Terraform WIF flow. GitHub issues a short-lived
+JWT for the job. The OCI Terraform provider sends it to the OCI Identity
+Domain, which checks the trust and returns a short-lived OCI token. The provider
+creates the temporary key and renews the OCI token when needed. For long jobs,
+the workflow refreshes only the GitHub JWT file.
+
 ## Important
 
 - Run workflows from `main`. The OCI trust matches this exact branch.
