@@ -1,4 +1,4 @@
-# OCI setup for GitHub Actions native Terraform WIF
+# OCI setup for GitHub Actions WIF
 
 *Current on 12 August 2026*
 
