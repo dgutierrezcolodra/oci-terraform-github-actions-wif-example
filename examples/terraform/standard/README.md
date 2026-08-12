@@ -17,13 +17,3 @@ Complete [SETUP.md](../../../SETUP.md), add the repository secrets, and run
 
 The workflow reads the compartment from `COMPARTMENT_ID`. A workflow input
 cannot change the target compartment.
-
-## Local check
-
-```bash
-terraform -chdir=examples/terraform/standard init -backend=false
-terraform -chdir=examples/terraform/standard validate
-```
-
-Use `terraform plan` locally only when you have a valid external JWT and a
-matching OCI trust.

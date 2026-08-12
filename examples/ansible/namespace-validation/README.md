@@ -9,10 +9,4 @@ Run **Demo Ansible WIF Namespace Validation** after you finish
 GitHub OIDC token, runs the Ansible bridge, runs this playbook, and removes the
 temporary credentials.
 
-For a local syntax check after installing the pinned collection:
-
-```bash
-ansible-playbook --syntax-check examples/ansible/namespace-validation/playbook.yml
-```
-
 The result is marked `no_log: true`. The playbook does not print the namespace.

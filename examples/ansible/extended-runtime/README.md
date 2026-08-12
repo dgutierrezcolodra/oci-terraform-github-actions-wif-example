@@ -42,11 +42,3 @@ the playbook:
 Keep credential files below `RUNNER_TEMP` and remove them in always-run cleanup.
 The playbook accepts only the repository helper at
 `$GITHUB_WORKSPACE/.github/actions/ansible-oci-wif/main.py`.
-
-For a local proof, run:
-
-```bash
-ansible-playbook \
-  --extra-vars "wif_wait_seconds=120 wif_helper_path=$GITHUB_WORKSPACE/.github/actions/ansible-oci-wif/main.py" \
-  examples/ansible/extended-runtime/playbook.yml
-```

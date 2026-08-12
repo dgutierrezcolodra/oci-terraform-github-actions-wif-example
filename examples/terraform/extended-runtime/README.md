@@ -18,12 +18,5 @@ Refresh** from `main`.
 
 The workflow fails if the source JWT file is not refreshed during the run.
 
-## Local check
-
-```bash
-terraform -chdir=examples/terraform/extended-runtime init -backend=false
-terraform -chdir=examples/terraform/extended-runtime validate
-```
-
 The related Ansible example uses a separate task-boundary adapter. See
 [Ansible extended runtime](../../ansible/extended-runtime/README.md).
