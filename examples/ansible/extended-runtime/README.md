@@ -1,27 +1,23 @@
-# OCI Ansible WIF extended-runtime renewal proof
+# Ansible WIF credential renewal
 
-This controller-local, single-play example shows how to renew the temporary
-credentials between `oracle.oci` module tasks. It performs only read-only
-Object Storage namespace facts calls; it creates no OCI resources and accepts
-no compartment or resource identifier.
+This example renews temporary credentials between `oracle.oci` tasks. It only
+reads the Object Storage namespace and creates no OCI resource.
 
-The playbook accepts only two proof durations: `120` seconds for a smoke test
-and `3900` seconds for the opt-in extended proof. Before the pause it records
-credential-file metadata and validates a namespace call. After the pause it
-runs the trusted `.github/actions/ansible-oci-wif/main.py` adapter synchronously
-in the same playbook, then verifies that the source JWT advanced and that the
-OCI security token and private key were replaced together. It makes a second
-read-only namespace call after the renewal.
+Use `120` seconds for a quick test or `3900` seconds for the full test. The
+playbook checks the namespace before and after renewal. It also checks that the
+source JWT, OCI token, and private key changed.
 
-This is deliberately a task boundary, not transparent token rotation inside a
-running module. For a long OCI operation, use `wait: false` and a later facts
-or status-task pattern: allow the first task to return, renew credentials, then
-use a subsequent task to inspect status. One already-running Ansible module
-retains its in-memory signer and cannot be updated by this playbook.
+Renewal happens between tasks. It cannot change the signer inside a module that
+is already running. For a long OCI operation, start the task asynchronously,
+renew after it returns, and then check its status.
+
+## Run in GitHub Actions
+
+Complete [SETUP.md](../../../SETUP.md), then run **Demo Ansible WIF Credential
+Renewal** from `main`. Select `smoke` for 120 seconds or `renewal-65m` for the
+full test.
 
 ## Copy set
-
-Copy these paths together:
 
 - `.github/actions/github-oidc-token-refresh/`
 - `.github/actions/ansible-oci-wif/`
@@ -29,14 +25,11 @@ Copy these paths together:
 - `examples/ansible/extended-runtime/`
 - `.github/workflows/demo-ansible-extended.yml`
 
-`oracle.oci` 5.6.0 is not published to Ansible Galaxy, so the requirements file
-pins Oracle's source tag to an exact Git commit. Installation requires `git` on
-the controller and does not use Galaxy collection-signature verification.
+The requirements file pins `oracle.oci` to an exact Oracle Git commit. You need
+`git` to install it. Galaxy signature checks are not used.
 
-Both the `120`-second smoke proof and `3900`-second extended proof require a
-one-minute source-JWT refresh interval. Do not rely on the action's default
-three minutes: it cannot establish the required source-JWT change during the
-120-second pause. The canonical extended workflow sets the interval explicitly:
+Both tests need a one-minute source-JWT refresh interval. Use this action before
+the playbook:
 
 ```yaml
 - name: Create a refreshable GitHub OIDC token file
@@ -46,15 +39,11 @@ three minutes: it cannot establish the required source-JWT change during the
     refresh_interval_minutes: "1"
 ```
 
-Run that refreshable action before this playbook so its source JWT can change
-during the selected pause; keep the adapter's credential files below
-`RUNNER_TEMP` and remove them in always-run job cleanup. The playbook accepts
-only the repository helper at
-`$GITHUB_WORKSPACE/.github/actions/ansible-oci-wif/main.py`; a caller-supplied
-arbitrary helper path is rejected before execution.
+Keep credential files below `RUNNER_TEMP` and remove them in always-run cleanup.
+The playbook accepts only the repository helper at
+`$GITHUB_WORKSPACE/.github/actions/ansible-oci-wif/main.py`.
 
-For a controller-local proof, run with a supported duration and the trusted
-helper path, for example:
+For a local proof, run:
 
 ```bash
 ansible-playbook \

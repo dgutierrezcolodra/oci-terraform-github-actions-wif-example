@@ -1,11 +1,11 @@
 # OCI setup for GitHub Actions native Terraform WIF
 
-*Current on 27 July 2026*
+*Current on 12 August 2026*
 
 This guide configures GitHub Actions as an external workload identity for the
-repository's validated OCI Terraform provider 8.24.0 baseline. Generic WIF
-support first appeared in provider 8.22.0, but this reference requires and
-locks 8.24.0. The runtime workflow is non-interactive and does not use OCI user
+repository's OCI Terraform provider 8.26.0 baseline. Generic WIF support first
+appeared in provider 8.22.0, but this reference requires and locks 8.26.0. The
+runtime workflow is non-interactive and does not use OCI user
 API keys.
 
 Use this setup for GitHub-hosted runners or self-hosted runners outside OCI. If
@@ -208,7 +208,7 @@ gate. `apply-and-destroy` remains an explicit manual workflow choice. If you
 store non-sensitive values as repository variables, change their workflow
 references from `secrets.NAME` to `vars.NAME`.
 
-Provider 8.24.0 obtains tenancy context from the exchanged UPST; do not add a
+Provider 8.26.0 obtains tenancy context from the exchanged UPST; do not add a
 separate tenancy secret to these references.
 
 The Terraform workflows pass `CLIENT_SECRET` only to the steps that call the
@@ -233,7 +233,7 @@ From the branch configured in the trust, run **Demo Terraform Apply
 successful run should show:
 
 - The GitHub OIDC token file was created.
-- Terraform selected the locked OCI provider 8.24.0 baseline.
+- Terraform selected the locked OCI provider 8.26.0 baseline.
 - Terraform completed the OCI data-source reads and produced a plan.
 - No `~/.oci/config`, OCI private key, or OCI security-token file was created by the workflow.
 
@@ -338,6 +338,6 @@ between 1 and 4 minutes. Never print the token contents.
 - [OCI JWT-to-UPST exchange](https://docs.oracle.com/en-us/iaas/Content/Identity/api-getstarted/json_web_token_exchange.htm)
 - [Oracle Core Technology blog: WIF with Microsoft Entra ID and Keycloak](https://blogs.oracle.com/coretec/oci-workload-identity-federation-wif-with-microsoft-entra-id-applications-and-keycloak)
 - [OCI IdentityPropagationTrust model](https://docs.oracle.com/en-us/iaas/tools/python/latest/api/identity_domains/models/oci.identity_domains.models.IdentityPropagationTrust.html)
-- [OCI provider 8.24.0 WIF implementation](https://github.com/oracle/terraform-provider-oci/blob/v8.24.0/internal/provider/workload_identity_federation.go)
+- [OCI provider 8.26.0 WIF implementation](https://github.com/oracle/terraform-provider-oci/blob/v8.26.0/internal/provider/workload_identity_federation.go)
 - [GitHub OIDC reference](https://docs.github.com/en/actions/reference/security/oidc)
 - [GitHub OIDC discovery document](https://token.actions.githubusercontent.com/.well-known/openid-configuration)
