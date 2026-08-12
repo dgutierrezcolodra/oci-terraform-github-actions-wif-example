@@ -39,6 +39,13 @@ Domain, which checks the trust and returns a short-lived OCI token. The provider
 creates the temporary key and renews the OCI token when needed. For long jobs,
 the workflow refreshes only the GitHub JWT file.
 
+## Scope
+
+OCI CLI is not included in this reference. As of 12 August 2026, its documented
+authentication modes do not include native `WorkloadIdentityFederation` support
+for this GitHub OIDC JWT flow. Using OCI CLI would need a separate compatibility
+adapter, similar to Ansible. See the [OCI CLI authentication options](https://docs.oracle.com/en-us/iaas/tools/oci-cli/latest/oci_cli_docs/oci.html).
+
 ## Important
 
 - Run workflows from `main`. The OCI trust matches this exact branch.
