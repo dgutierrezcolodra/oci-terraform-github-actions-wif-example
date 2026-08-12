@@ -321,7 +321,8 @@ terraform providers
 env | grep '^OCI_\(AUTH\|REGION\|WORKLOAD_IDENTITY\|TOKEN_EXCHANGE\)' | sed 's/CLIENT_SECRET=.*/CLIENT_SECRET=***REDACTED***/'
 ```
 
-Required provider variables are documented in [README.md](./README.md#terraform-configuration).
+Required provider variables are documented in
+[Terraform examples](./examples/terraform/README.md).
 
 ### Long run fails after the initial OCI token expires
 
