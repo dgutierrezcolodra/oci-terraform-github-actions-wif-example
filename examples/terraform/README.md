@@ -27,6 +27,6 @@ Use **Demo Terraform Token Refresh** with `120s` for a quick test or `65m` for
 provider renewal. The extended example creates no OCI resource.
 
 Set these repository secrets: `CLIENT_ID`, `CLIENT_SECRET`, `DOMAIN_BASE_URL`,
-`OCI_REGION`, `TENANCY_OCID`, and `COMPARTMENT_ID`. Read
+`OCI_REGION`, `OCI_TENANCY`, and `COMPARTMENT_ID`. Read
 [SETUP.md](../../SETUP.md) for the OCI trust and IAM policy. The trust must match
 `repo:<owner>/<repository>:ref:refs/heads/main`.

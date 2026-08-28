@@ -20,7 +20,7 @@ Complete [SETUP.md](../../../SETUP.md), add the repository secrets, and run
 - Select `apply-and-destroy` for the full test. It creates one private bucket
   and removes it in the same job.
 
-The workflow reads `TENANCY_OCID`, `OCI_REGION`, and `COMPARTMENT_ID` from
+The workflow reads `OCI_TENANCY`, `OCI_REGION`, and `COMPARTMENT_ID` from
 repository secrets. A workflow input cannot change the target compartment.
 `orchestrator-inputs.json.example` shows the temporary input shape with
 placeholders only.

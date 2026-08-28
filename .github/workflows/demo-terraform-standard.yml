@@ -77,18 +77,18 @@ jobs:
       - name: Prepare pinned OCI Landing Zones Orchestrator root
         shell: bash
         env:
-          TENANCY_OCID: ${{ secrets.TENANCY_OCID }}
+          OCI_TENANCY: ${{ secrets.OCI_TENANCY }}
         run: |
           if [[ -z "${RUNNER_TEMP:-}" || "$RUNNER_TEMP" == "/" ]]; then
             echo 'RUNNER_TEMP is not a safe runtime root' >&2
             exit 1
           fi
-          if [[ -z "$TENANCY_OCID" || -z "$TF_VAR_compartment_id" || -z "$TF_VAR_oci_region" ]]; then
+          if [[ -z "$OCI_TENANCY" || -z "$TF_VAR_compartment_id" || -z "$TF_VAR_oci_region" ]]; then
             echo 'Missing OCI Orchestrator input' >&2
             exit 1
           fi
 
-          echo "::add-mask::$TENANCY_OCID"
+          echo "::add-mask::$OCI_TENANCY"
           runtime_directory="$RUNNER_TEMP/oci-wif"
           orchestrator_directory="$RUNNER_TEMP/oci-lz-orchestrator"
           input_file="$runtime_directory/orchestrator-inputs.tfvars.json"
@@ -110,7 +110,7 @@ jobs:
           temporary_input="$(mktemp "$runtime_directory/orchestrator-inputs.XXXXXX")"
           trap 'rm -f -- "$temporary_input"' EXIT
           jq -n \
-            --arg tenancy_ocid "$TENANCY_OCID" \
+            --arg tenancy_ocid "$OCI_TENANCY" \
             --arg region "$TF_VAR_oci_region" \
             --arg compartment_id "$TF_VAR_compartment_id" \
             --arg bucket_name "$TF_VAR_bucket_name" \
