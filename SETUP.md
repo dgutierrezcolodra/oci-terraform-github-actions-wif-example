@@ -198,7 +198,7 @@ Add these repository Actions secrets under **Settings → Secrets and variables 
 | `CLIENT_SECRET` | Secret | Runtime token-exchange application client secret |
 | `DOMAIN_BASE_URL` | Secret or variable | Identity Domain URL without a trailing slash |
 | `OCI_REGION` | Secret or variable | Region such as `eu-madrid-1` |
-| `TENANCY_OCID` | Secret | Tenancy OCID required by the Orchestrator root |
+| `OCI_TENANCY` | Secret | Tenancy OCID required by the Orchestrator root |
 | `COMPARTMENT_ID` | Secret | Target compartment OCID |
 
 The Terraform standard workflow references all six values through the `secrets`
@@ -211,7 +211,7 @@ gate. `apply-and-destroy` remains an explicit manual workflow choice. If you
 store non-sensitive values as repository variables, change their workflow
 references from `secrets.NAME` to `vars.NAME`.
 
-The standard Orchestrator workflow needs `TENANCY_OCID` to resolve the tenancy
+The standard Orchestrator workflow needs `OCI_TENANCY` to resolve the tenancy
 home region. It remains a repository secret and is used only to generate the
 temporary Orchestrator input file; the provider still authenticates through the
 exchanged UPST.
