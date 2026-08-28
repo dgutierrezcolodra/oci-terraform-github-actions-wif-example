@@ -4,7 +4,7 @@ This GitHub Actions demo checks source-JWT refresh during one long Terraform
 process. It reads the OCI namespace, waits, and reads it again. It creates no
 OCI resource.
 
-The module needs Terraform `>= 1.5.0`. Its lockfile selects OCI provider 8.26.0.
+The module needs Terraform `>= 1.5.0`. Its lockfile selects OCI provider 8.29.0.
 The provider owns the OCI token and key. The refresh action changes only the
 GitHub JWT file.
 

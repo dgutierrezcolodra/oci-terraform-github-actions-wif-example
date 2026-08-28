@@ -74,35 +74,98 @@ jobs:
             echo 'OCI_TOKEN_EXCHANGE_SUBJECT_TOKEN_TYPE=jwt'
           } >> "$GITHUB_ENV"
 
+      - name: Prepare pinned OCI Landing Zones Orchestrator root
+        shell: bash
+        env:
+          TENANCY_OCID: ${{ secrets.TENANCY_OCID }}
+        run: |
+          if [[ -z "${RUNNER_TEMP:-}" || "$RUNNER_TEMP" == "/" ]]; then
+            echo 'RUNNER_TEMP is not a safe runtime root' >&2
+            exit 1
+          fi
+          if [[ -z "$TENANCY_OCID" || -z "$TF_VAR_compartment_id" || -z "$TF_VAR_oci_region" ]]; then
+            echo 'Missing OCI Orchestrator input' >&2
+            exit 1
+          fi
+
+          echo "::add-mask::$TENANCY_OCID"
+          runtime_directory="$RUNNER_TEMP/oci-wif"
+          orchestrator_directory="$RUNNER_TEMP/oci-lz-orchestrator"
+          input_file="$runtime_directory/orchestrator-inputs.tfvars.json"
+          plan_file="$runtime_directory/orchestrator.tfplan"
+          expected_commit='34202e837e9df015ddaaa4fce0ab62bb6e3883de'
+
+          install -d -m 700 "$runtime_directory"
+          git clone --depth 1 --branch v2.1.3 \
+            https://github.com/oci-landing-zones/terraform-oci-modules-orchestrator.git \
+            "$orchestrator_directory"
+          actual_commit="$(git -C "$orchestrator_directory" rev-parse HEAD)"
+          if [[ "$actual_commit" != "$expected_commit" ]]; then
+            echo 'Unexpected OCI Landing Zones Orchestrator commit' >&2
+            exit 1
+          fi
+
+          install -m 600 examples/terraform/standard/orchestrator.lock.hcl \
+            "$orchestrator_directory/.terraform.lock.hcl"
+          temporary_input="$(mktemp "$runtime_directory/orchestrator-inputs.XXXXXX")"
+          trap 'rm -f -- "$temporary_input"' EXIT
+          jq -n \
+            --arg tenancy_ocid "$TENANCY_OCID" \
+            --arg region "$TF_VAR_oci_region" \
+            --arg compartment_id "$TF_VAR_compartment_id" \
+            --arg bucket_name "$TF_VAR_bucket_name" \
+            '{
+              tenancy_ocid: $tenancy_ocid,
+              region: $region,
+              object_storage_configuration: {
+                default_compartment_id: $compartment_id,
+                buckets: {
+                  validation: {
+                    name: $bucket_name,
+                    compartment_id: $compartment_id
+                  }
+                }
+              }
+            }' > "$temporary_input"
+          chmod 600 "$temporary_input"
+          mv -- "$temporary_input" "$input_file"
+
+          {
+            echo "ORCHESTRATOR_ROOT=$orchestrator_directory"
+            echo "ORCHESTRATOR_INPUT_FILE=$input_file"
+            echo "ORCHESTRATOR_PLAN_FILE=$plan_file"
+            echo "TF_DATA_DIR=$runtime_directory/terraform-data"
+          } >> "$GITHUB_ENV"
+
       - name: Terraform Init
-        working-directory: examples/terraform/standard
-        run: terraform init
+        run: terraform -chdir="$ORCHESTRATOR_ROOT" init -lockfile=readonly
 
       - name: Terraform Validate
-        working-directory: examples/terraform/standard
-        run: terraform validate
+        run: terraform -chdir="$ORCHESTRATOR_ROOT" validate
 
       - name: Terraform Plan
-        working-directory: examples/terraform/standard
         env:
           OCI_TOKEN_EXCHANGE_CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
-        run: terraform plan -out=tfplan
+        run: terraform -chdir="$ORCHESTRATOR_ROOT" plan -out="$ORCHESTRATOR_PLAN_FILE" -var-file="$ORCHESTRATOR_INPUT_FILE"
 
       - name: Terraform Apply
         if: github.event.inputs.action == 'apply-and-destroy'
-        working-directory: examples/terraform/standard
         env:
           OCI_TOKEN_EXCHANGE_CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
-        run: terraform apply -auto-approve tfplan
+        run: terraform -chdir="$ORCHESTRATOR_ROOT" apply -auto-approve "$ORCHESTRATOR_PLAN_FILE"
 
       - name: Terraform Destroy (cleanup)
-        if: always() && github.event.inputs.action == 'apply-and-destroy'
-        working-directory: examples/terraform/standard
+        if: always() && github.event.inputs.action == 'apply-and-destroy' && env.ORCHESTRATOR_ROOT != ''
         env:
           OCI_TOKEN_EXCHANGE_CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
-        run: terraform destroy -auto-approve
+        run: terraform -chdir="$ORCHESTRATOR_ROOT" destroy -auto-approve -var-file="$ORCHESTRATOR_INPUT_FILE"
 
-      - name: Remove GitHub OIDC credentials
+      - name: Remove runtime files
         if: always()
         shell: bash
-        run: rm -rf -- "$RUNNER_TEMP/oci-wif"
+        run: |
+          if [[ -z "${RUNNER_TEMP:-}" || "$RUNNER_TEMP" == "/" ]]; then
+            echo 'RUNNER_TEMP is not a safe cleanup root' >&2
+            exit 1
+          fi
+          rm -rf -- "$RUNNER_TEMP/oci-wif" "$RUNNER_TEMP/oci-lz-orchestrator"

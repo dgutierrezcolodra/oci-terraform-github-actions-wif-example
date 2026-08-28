@@ -1,6 +1,6 @@
 # Example: Terraform native WIF during long-running operations
 #
-# The helper refreshes only the GitHub source JWT file. OCI provider 8.24+
+# The helper refreshes only the GitHub source JWT file. OCI provider 8.29.0+
 # owns the OCI UPST and its proof-of-possession key and renews them together.
 #
 # How it works:
@@ -13,7 +13,7 @@ terraform {
   required_providers {
     oci = {
       source  = "oracle/oci"
-      version = ">= 8.26.0, < 9.0.0"
+      version = ">= 8.29.0, < 9.0.0"
     }
     time = {
       source  = "hashicorp/time"

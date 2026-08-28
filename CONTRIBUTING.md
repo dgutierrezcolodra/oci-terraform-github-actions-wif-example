@@ -126,13 +126,17 @@ For formatting:
 terraform fmt -check -recursive
 ```
 
-For validation, run from each Terraform example directory after initializing
-providers:
+For the extended-runtime example, initialize and validate its local module:
 
 ```bash
-terraform -chdir=examples/terraform/standard init -backend=false
-terraform -chdir=examples/terraform/standard validate
+terraform -chdir=examples/terraform/extended-runtime init -backend=false
+terraform -chdir=examples/terraform/extended-runtime validate
 ```
+
+The standard example runs the pinned OCI Landing Zones Orchestrator checkout as
+Terraform's root module. Do not add a provider or a child-module wrapper under
+`examples/terraform/standard`; validate its pinned root and lock through the
+workflow's temporary-checkout procedure.
 
 If you change `examples/terraform/extended-runtime/`, validate that directory
 as well:

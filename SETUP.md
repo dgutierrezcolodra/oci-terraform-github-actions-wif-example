@@ -3,8 +3,8 @@
 *Current on 12 August 2026*
 
 This guide configures GitHub Actions as an external workload identity for the
-repository's OCI Terraform provider 8.26.0 baseline. Generic WIF support first
-appeared in provider 8.22.0, but this reference requires and locks 8.26.0. The
+repository's OCI Terraform provider 8.29.0 baseline. Generic WIF support first
+appeared in provider 8.22.0, but this reference requires and locks 8.29.0. The
 runtime workflow is non-interactive and does not use OCI user
 API keys.
 
@@ -198,9 +198,12 @@ Add these repository Actions secrets under **Settings → Secrets and variables 
 | `CLIENT_SECRET` | Secret | Runtime token-exchange application client secret |
 | `DOMAIN_BASE_URL` | Secret or variable | Identity Domain URL without a trailing slash |
 | `OCI_REGION` | Secret or variable | Region such as `eu-madrid-1` |
+| `TENANCY_OCID` | Secret | Tenancy OCID required by the Orchestrator root |
 | `COMPARTMENT_ID` | Secret | Target compartment OCID |
 
-The workflows reference all five values through the `secrets` context.
+The Terraform standard workflow references all six values through the `secrets`
+context. `DOMAIN_BASE_URL` and `OCI_REGION` can be converted to repository
+variables only if the workflow references are updated consistently.
 `COMPARTMENT_ID` is a repository secret and is not a workflow-dispatch input,
 so a caller cannot redirect an apply to an arbitrary compartment. The jobs do
 not declare a GitHub environment and therefore have no Environment approval
@@ -208,8 +211,10 @@ gate. `apply-and-destroy` remains an explicit manual workflow choice. If you
 store non-sensitive values as repository variables, change their workflow
 references from `secrets.NAME` to `vars.NAME`.
 
-Provider 8.26.0 obtains tenancy context from the exchanged UPST; do not add a
-separate tenancy secret to these references.
+The standard Orchestrator workflow needs `TENANCY_OCID` to resolve the tenancy
+home region. It remains a repository secret and is used only to generate the
+temporary Orchestrator input file; the provider still authenticates through the
+exchanged UPST.
 
 The Terraform workflows pass `CLIENT_SECRET` only to the steps that call the
 configured provider. They mask it before shell use and do not persist it
@@ -233,7 +238,7 @@ From the branch configured in the trust, run **Demo Terraform Apply
 successful run should show:
 
 - The GitHub OIDC token file was created.
-- Terraform selected the locked OCI provider 8.26.0 baseline.
+- Terraform selected the locked OCI provider 8.29.0 baseline.
 - Terraform completed the OCI data-source reads and produced a plan.
 - No `~/.oci/config`, OCI private key, or OCI security-token file was created by the workflow.
 
@@ -339,6 +344,6 @@ between 1 and 4 minutes. Never print the token contents.
 - [OCI JWT-to-UPST exchange](https://docs.oracle.com/en-us/iaas/Content/Identity/api-getstarted/json_web_token_exchange.htm)
 - [Oracle Core Technology blog: WIF with Microsoft Entra ID and Keycloak](https://blogs.oracle.com/coretec/oci-workload-identity-federation-wif-with-microsoft-entra-id-applications-and-keycloak)
 - [OCI IdentityPropagationTrust model](https://docs.oracle.com/en-us/iaas/tools/python/latest/api/identity_domains/models/oci.identity_domains.models.IdentityPropagationTrust.html)
-- [OCI provider 8.26.0 WIF implementation](https://github.com/oracle/terraform-provider-oci/blob/v8.26.0/internal/provider/workload_identity_federation.go)
+- [OCI provider 8.29.0 WIF implementation](https://github.com/oracle/terraform-provider-oci/blob/v8.29.0/internal/provider/workload_identity_federation.go)
 - [GitHub OIDC reference](https://docs.github.com/en/actions/reference/security/oidc)
 - [GitHub OIDC discovery document](https://token.actions.githubusercontent.com/.well-known/openid-configuration)
