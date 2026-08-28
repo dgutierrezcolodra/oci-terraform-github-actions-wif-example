@@ -1,57 +1,26 @@
-# Standard Terraform native OCI WIF example
+# Standard Terraform WIF demo
 
-This root module creates one private Object Storage bucket and validates native OCI Workload Identity Federation authentication.
+This GitHub Actions demo checks OCI WIF through the [OCI Landing Zones
+Orchestrator](https://github.com/oci-landing-zones/terraform-oci-modules-orchestrator).
+The workflow runs the unmodified v2.1.3 upstream checkout as Terraform's root
+module, pinned to commit `34202e837e9df015ddaaa4fce0ab62bb6e3883de`. It does
+not wrap the Orchestrator as a child module.
 
-Generic WIF support first appeared in OCI provider 8.22.0. This module requires
-and locks provider 8.24.0 as the repository's validated baseline.
-Authentication settings come from the GitHub workflow environment; no
-`~/.oci/config`, OCI API key, or externally generated OCI session token is
-used.
+The workflow copies `orchestrator.lock.hcl` into its temporary upstream root,
+which selects OCI provider 8.29.0. It creates the Object Storage configuration
+only in `RUNNER_TEMP` with mode 0600. Terraform retains native provider WIF and
+does not use an OCI API key, OCI config file, or OCI security token.
 
-Use this generic WIF example for GitHub-hosted runners or self-hosted runners
-outside OCI. Prefer Instance Principals for a runner on OCI Compute and OKE
-Workload Identity for a runner pod in an enhanced OKE cluster.
+## Run in GitHub Actions
 
-## Files
+Complete [SETUP.md](../../../SETUP.md), add the repository secrets, and run
+**Demo Terraform Apply (Standard)** from `main`.
 
-- `versions.tf`: pins the supported OCI provider 8.x range.
-- `provider.tf`: selects `WorkloadIdentityFederation` authentication.
-- `variables.tf`: defines the compartment, region, and bucket name.
-- `main.tf`: reads the namespace and creates the bucket.
-- `outputs.tf`: returns information about the planned or created bucket.
+- Select `plan` for the normal WIF check. It does not create a bucket.
+- Select `apply-and-destroy` for the full test. It creates one private bucket
+  and removes it in the same job.
 
-## Required environment
-
-```text
-OCI_WORKLOAD_IDENTITY_TOKEN_PATH
-OCI_TOKEN_EXCHANGE_DOMAIN_URL
-OCI_TOKEN_EXCHANGE_AUTH=OAuthClientCredentials
-OCI_TOKEN_EXCHANGE_CLIENT_ID
-OCI_TOKEN_EXCHANGE_CLIENT_SECRET
-OCI_TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE=urn:oci:token-type:oci-upst
-OCI_TOKEN_EXCHANGE_SUBJECT_TOKEN_TYPE=jwt
-```
-
-Use `.github/workflows/demo-terraform-standard.yml` and
-`.github/actions/github-oidc-token` to populate these values in GitHub Actions.
-For local validation, provide a valid external JWT file and matching OCI
-Identity Propagation Trust before running `terraform plan`.
-
-From the repository root, initialize and validate this example with:
-
-```bash
-terraform -chdir=examples/terraform/standard init -backend=false
-terraform -chdir=examples/terraform/standard validate
-```
-
-The standard and extended Terraform workflows remove their protected source-JWT
-directory in an independent always-run cleanup. The extended workflow also
-validates and stops the exact refresh daemon recorded by
-`.github/actions/github-oidc-token-refresh` before removing that directory.
-
-The checked-in trust example matches
-`repo:<owner>/<repository>:ref:refs/heads/main`. When copying it, replace the
-owner, repository, and protected branch consistently. The workflow intentionally
-declares no GitHub environment, preserving the default branch-ref subject. It
-passes `CLIENT_SECRET` only to the Terraform provider steps and does not persist
-that secret through `GITHUB_ENV`.
+The workflow reads `TENANCY_OCID`, `OCI_REGION`, and `COMPARTMENT_ID` from
+repository secrets. A workflow input cannot change the target compartment.
+`orchestrator-inputs.json.example` shows the temporary input shape with
+placeholders only.

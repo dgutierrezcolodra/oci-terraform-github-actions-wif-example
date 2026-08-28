@@ -1,0 +1,13 @@
+{
+  "tenancy_ocid": "ocid1.tenancy.oc1..example",
+  "region": "<oci-region>",
+  "object_storage_configuration": {
+    "default_compartment_id": "ocid1.compartment.oc1..example",
+    "buckets": {
+      "validation": {
+        "name": "terraform-wif-validation-example",
+        "compartment_id": "ocid1.compartment.oc1..example"
+      }
+    }
+  }
+}

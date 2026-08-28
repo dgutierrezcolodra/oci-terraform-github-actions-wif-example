@@ -1,25 +1,22 @@
-# Extended-runtime native WIF example
+# Extended Terraform WIF demo
 
-This module performs an OCI read, waits, and performs another OCI read in the same Terraform process.
+This GitHub Actions demo checks source-JWT refresh during one long Terraform
+process. It reads the OCI namespace, waits, and reads it again. It creates no
+OCI resource.
 
-The repository requires, locks, and validates OCI provider 8.24.0 for this
-example. The provider owns the OCI UPST and ephemeral RSA key. The
-`.github/actions/github-oidc-token-refresh` action refreshes only
-`OCI_WORKLOAD_IDENTITY_TOKEN_PATH`, using atomic replacement. When the provider
-needs a new UPST, it rereads the current GitHub JWT and rotates the OCI token
-and key together.
+The module needs Terraform `>= 1.5.0`. Its lockfile selects OCI provider 8.29.0.
+The provider owns the OCI token and key. The refresh action changes only the
+GitHub JWT file.
 
-Run the **Demo Terraform Token Refresh** workflow. Its `wait_duration` input defaults to `120s`, which confirms that the source JWT file is refreshed while Terraform is active. Use `65m` for a full end-to-end UPST renewal test.
+## Run in GitHub Actions
 
-From the repository root, initialize and validate this example with:
+Complete [SETUP.md](../../../SETUP.md), then run **Demo Terraform Token
+Refresh** from `main`.
 
-```bash
-terraform -chdir=examples/terraform/extended-runtime init -backend=false
-terraform -chdir=examples/terraform/extended-runtime validate
-```
+- Use `120s` for a quick test.
+- Use `65m` for the full provider-renewal test.
 
-No OCI resources are created by this example. The `time_sleep` resource exists only to keep the Terraform process active between the two OCI data-source calls.
+The workflow fails if the source JWT file is not refreshed during the run.
 
-This source-JWT refresh flow is the validated extended Terraform path.
-Long-running Ansible uses the separate task-boundary adapter documented in
-`examples/ansible/extended-runtime/README.md`.
+The related Ansible example uses a separate task-boundary adapter. See
+[Ansible extended runtime](../../ansible/extended-runtime/README.md).
