@@ -3,8 +3,7 @@
 This GitHub Actions demo checks OCI WIF through the [OCI Landing Zones
 Orchestrator](https://github.com/oci-landing-zones/terraform-oci-modules-orchestrator).
 The workflow runs the unmodified v2.1.3 upstream checkout as Terraform's root
-module, pinned to commit `34202e837e9df015ddaaa4fce0ab62bb6e3883de`. It does
-not wrap the Orchestrator as a child module.
+module. It does not wrap the Orchestrator as a child module.
 
 The workflow copies `orchestrator.lock.hcl` into its temporary upstream root,
 which selects OCI provider 8.29.0. It creates the Object Storage configuration

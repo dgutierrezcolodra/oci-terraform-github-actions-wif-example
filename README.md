@@ -40,10 +40,9 @@ creates the temporary key and renews the OCI token when needed. For long jobs,
 the workflow refreshes only the GitHub JWT file.
 
 The standard Terraform demo runs the official OCI Landing Zones Orchestrator
-v2.1.3 as Terraform's root module, pinned to commit
-`34202e837e9df015ddaaa4fce0ab62bb6e3883de`. It does not modify, fork, or wrap
-the Orchestrator as a child module. The workflow creates its one-bucket input
-file only below `RUNNER_TEMP`, while the OCI provider retains native WIF.
+v2.1.3 as Terraform's root module. It does not modify, fork, or wrap the
+Orchestrator as a child module. The workflow creates its one-bucket input file
+only below `RUNNER_TEMP`, while the OCI provider retains native WIF.
 
 ## Scope
 
