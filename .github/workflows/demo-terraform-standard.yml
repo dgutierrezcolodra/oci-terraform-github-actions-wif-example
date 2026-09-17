@@ -33,6 +33,7 @@ jobs:
       contents: read
 
     env:
+      TF_IN_AUTOMATION: "true"
       TF_VAR_compartment_id: ${{ secrets.COMPARTMENT_ID }}
       TF_VAR_oci_region: ${{ secrets.OCI_REGION }}
       TF_VAR_bucket_name: ${{ github.event.inputs.bucket_name || format('terraform-wif-validation-{0}', github.run_id) }}
@@ -46,11 +47,6 @@ jobs:
         with:
           terraform_version: "1.15.4"
 
-      - name: Create GitHub OIDC token file
-        uses: ./.github/actions/github-oidc-token
-        with:
-          audience: https://cloud.oracle.com
-
       - name: Export OCI WIF configuration
         shell: bash
         env:
@@ -58,7 +54,7 @@ jobs:
           WIF_CLIENT_ID: ${{ secrets.CLIENT_ID }}
           WIF_CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
         run: |
-          if [[ -z "$WIF_CLIENT_ID" || -z "$WIF_CLIENT_SECRET" ]]; then
+          if [[ -z "$WIF_DOMAIN_URL" || -z "$WIF_CLIENT_ID" || -z "$WIF_CLIENT_SECRET" ]]; then
             echo 'Missing OCI WIF client credentials' >&2
             exit 1
           fi
@@ -88,6 +84,7 @@ jobs:
             exit 1
           fi
 
+          umask 077
           echo "::add-mask::$OCI_TENANCY"
           runtime_directory="$RUNNER_TEMP/oci-wif"
           orchestrator_directory="$RUNNER_TEMP/oci-lz-orchestrator"
@@ -138,27 +135,52 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Terraform Init
-        run: terraform -chdir="$ORCHESTRATOR_ROOT" init -lockfile=readonly
+        run: terraform -chdir="$ORCHESTRATOR_ROOT" init -input=false -lockfile=readonly
 
       - name: Terraform Validate
         run: terraform -chdir="$ORCHESTRATOR_ROOT" validate
 
+      - name: Create GitHub OIDC token for Terraform Plan
+        uses: ./.github/actions/github-oidc-token
+        with:
+          audience: https://cloud.oracle.com
+
       - name: Terraform Plan
         env:
           OCI_TOKEN_EXCHANGE_CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
-        run: terraform -chdir="$ORCHESTRATOR_ROOT" plan -out="$ORCHESTRATOR_PLAN_FILE" -var-file="$ORCHESTRATOR_INPUT_FILE"
+        run: terraform -chdir="$ORCHESTRATOR_ROOT" plan -input=false -out="$ORCHESTRATOR_PLAN_FILE" -var-file="$ORCHESTRATOR_INPUT_FILE"
+
+      - name: Refresh GitHub OIDC token for Terraform Apply
+        if: github.event.inputs.action == 'apply-and-destroy'
+        uses: ./.github/actions/github-oidc-token
+        with:
+          audience: https://cloud.oracle.com
 
       - name: Terraform Apply
         if: github.event.inputs.action == 'apply-and-destroy'
         env:
           OCI_TOKEN_EXCHANGE_CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
-        run: terraform -chdir="$ORCHESTRATOR_ROOT" apply -auto-approve "$ORCHESTRATOR_PLAN_FILE"
+        run: terraform -chdir="$ORCHESTRATOR_ROOT" apply -input=false -auto-approve "$ORCHESTRATOR_PLAN_FILE"
+
+      - name: Refresh GitHub OIDC token for Terraform Destroy
+        id: oidc_for_destroy
+        if: >-
+          always() &&
+          github.event.inputs.action == 'apply-and-destroy' &&
+          env.ORCHESTRATOR_ROOT != ''
+        uses: ./.github/actions/github-oidc-token
+        with:
+          audience: https://cloud.oracle.com
 
       - name: Terraform Destroy (cleanup)
-        if: always() && github.event.inputs.action == 'apply-and-destroy' && env.ORCHESTRATOR_ROOT != ''
+        if: >-
+          always() &&
+          github.event.inputs.action == 'apply-and-destroy' &&
+          env.ORCHESTRATOR_ROOT != '' &&
+          steps.oidc_for_destroy.outcome == 'success'
         env:
           OCI_TOKEN_EXCHANGE_CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
-        run: terraform -chdir="$ORCHESTRATOR_ROOT" destroy -auto-approve -var-file="$ORCHESTRATOR_INPUT_FILE"
+        run: terraform -chdir="$ORCHESTRATOR_ROOT" destroy -input=false -auto-approve -var-file="$ORCHESTRATOR_INPUT_FILE"
 
       - name: Remove runtime files
         if: always()

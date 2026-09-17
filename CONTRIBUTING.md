@@ -116,7 +116,7 @@ python3 -m py_compile \
 ```
 
 Local tests remain outside Git. Do not add, stage, upload, or reference local
-test files from tracked automation. Never track `.superpowers/` or `tests/`.
+test files from tracked automation. Never track `tests/`.
 
 ### Terraform examples
 
