@@ -145,7 +145,8 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          terraform -chdir=examples/terraform/simple init -input=false -lockfile=readonly
+          terraform -chdir=examples/terraform/simple init -input=false -lockfile=readonly \
+            -backend-config="path=$RUNNER_TEMP/rpst-terraform/terraform.tfstate"
 
       - name: Terraform Validate
         shell: bash
@@ -168,7 +169,6 @@ jobs:
           set -euo pipefail
           umask 077
           terraform -chdir=examples/terraform/simple plan -input=false \
-            -state="$RUNNER_TEMP/rpst-terraform/terraform.tfstate" \
             -out="$RUNNER_TEMP/rpst-terraform/bucket.tfplan"
 
       - name: Refresh GitHub OIDC token for apply
@@ -187,7 +187,6 @@ jobs:
           set -euo pipefail
           umask 077
           terraform -chdir=examples/terraform/simple apply -input=false -auto-approve \
-            -state="$RUNNER_TEMP/rpst-terraform/terraform.tfstate" \
             "$RUNNER_TEMP/rpst-terraform/bucket.tfplan"
 
       - name: Refresh GitHub OIDC token for destroy
@@ -210,8 +209,7 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          terraform -chdir=examples/terraform/simple destroy -auto-approve -input=false \
-            -state="$RUNNER_TEMP/rpst-terraform/terraform.tfstate"
+          terraform -chdir=examples/terraform/simple destroy -auto-approve -input=false
 
       - name: Remove runtime files
         if: always()
