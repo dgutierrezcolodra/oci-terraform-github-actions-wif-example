@@ -10,7 +10,7 @@ which selects OCI provider 8.29.0. It creates the Object Storage configuration
 only in `RUNNER_TEMP` with mode 0600. Terraform retains native provider WIF and
 does not use an OCI API key, OCI config file, or OCI security token.
 
-To keep the one-shot source token current without adding a background process, the workflow requests a fresh GitHub OIDC JWT immediately before each separate Terraform process that calls OCI: `plan`, optional `apply`, and optional `destroy`. This standard demo does not use the background refresh daemon because the bucket operation is intentionally short. Use the extended-runtime example when one Terraform process may run long enough to require source-JWT refresh.
+To keep the one-shot source token current without adding a background process, the workflow requests a fresh GitHub OIDC JWT immediately before each separate Terraform process that calls OCI: `plan`, optional `apply`, and optional `destroy`. This standard demo does not use the background refresh daemon because the bucket operation is intentionally short.
 
 ## Run in GitHub Actions
 

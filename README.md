@@ -1,6 +1,6 @@
 # OCI Workload Identity Federation for GitHub Actions
 
-*Current on 12 August 2026*
+*RPST demo branch, 8 October 2026*
 
 This repository shows GitHub Actions authentication to Oracle Cloud
 Infrastructure (OCI) with short-lived GitHub OIDC tokens and OCI Workload
@@ -8,6 +8,9 @@ Identity Federation (WIF). It does not use an OCI user API key.
 
 - [Terraform examples](./examples/terraform/README.md)
 - [Ansible examples](./examples/ansible/README.md)
+- [RPST bucket demo and runbook](./spike/rpst/README.md): the experiment on
+  `spike/rpst-terraform` creates and deletes one private bucket using native
+  Terraform WIF with an RPST.
 
 Read [SETUP.md](./SETUP.md) first. It explains the OCI trust, IAM policy, and
 GitHub secrets needed by both examples.
@@ -29,15 +32,14 @@ sequenceDiagram
     Provider->>Domain: Exchange JWT and public key
     Domain-->>Provider: Short-lived OCI UPST
     Provider->>OCI: Sign API requests with matching private key
-    Note over Job,Provider: Extended workflow refreshes only the source JWT file
+    Note over Job,Provider: Request a fresh source JWT before each Terraform command
     Provider->>Domain: Renew UPST and key together when required
 ```
 
 The diagram shows the native Terraform WIF flow. GitHub issues a short-lived
 JWT for the job. The OCI Terraform provider sends it to the OCI Identity
 Domain, which checks the trust and returns a short-lived OCI token. The provider
-creates the temporary key and renews the OCI token when needed. For long jobs,
-the workflow refreshes only the GitHub JWT file.
+creates the temporary key and renews the OCI token when needed.
 
 The standard Terraform demo runs the official OCI Landing Zones Orchestrator
 v2.1.3 as Terraform's root module. It does not modify, fork, or wrap the
@@ -46,14 +48,15 @@ only below `RUNNER_TEMP`, while the OCI provider retains native WIF.
 
 ## Scope
 
-OCI CLI is not included in this reference. As of 12 August 2026, its documented
+OCI CLI is used only for administrative setup in the RPST runbook. As of 12 August 2026, its documented
 authentication modes do not include native `WorkloadIdentityFederation` support
 for this GitHub OIDC JWT flow. Using OCI CLI would need a separate compatibility
 adapter, similar to Ansible. See the [OCI CLI authentication options](https://docs.oracle.com/en-us/iaas/tools/oci-cli/latest/oci_cli_docs/oci.html).
 
 ## Important
 
-- Run workflows from `main`. The OCI trust matches this exact branch.
+- Run the standard UPST workflows from `main`; their trust matches that branch.
+- Run the RPST bucket demo on `spike/rpst-terraform` as described in its runbook.
 - Never use `sub eq *` in the trust.
 - Do not print or upload tokens, private keys, client secrets, or state files.
 

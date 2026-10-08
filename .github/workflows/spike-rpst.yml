@@ -1,6 +1,12 @@
 name: Spike RPST Terraform
 
 on:
+  push:
+    branches:
+      - spike/rpst-terraform
+    paths:
+      - .github/workflows/spike-rpst.yml
+      - spike/rpst/main.tf
   workflow_dispatch:
     inputs:
       action:
@@ -20,6 +26,7 @@ jobs:
       contents: read
     env:
       TF_IN_AUTOMATION: "true"
+      SPIKE_ACTION: ${{ inputs.action || 'apply-and-destroy' }}
 
     steps:
       - name: Checkout repository
@@ -165,14 +172,14 @@ jobs:
             -out="$RUNNER_TEMP/rpst-spike/spike.tfplan"
 
       - name: Refresh GitHub OIDC token for apply
-        if: inputs.action == 'apply-and-destroy'
+        if: env.SPIKE_ACTION == 'apply-and-destroy'
         uses: ./.github/actions/github-oidc-token
         with:
           audience: https://cloud.oracle.com
 
       - name: Terraform Apply
         id: apply
-        if: inputs.action == 'apply-and-destroy'
+        if: env.SPIKE_ACTION == 'apply-and-destroy'
         shell: bash
         env:
           OCI_TOKEN_EXCHANGE_CLIENT_SECRET: ${{ secrets.RPST_CLIENT_SECRET }}
@@ -186,7 +193,7 @@ jobs:
       - name: Refresh GitHub OIDC token for destroy
         id: oidc_for_destroy
         if: >-
-          always() && inputs.action == 'apply-and-destroy' &&
+          always() && env.SPIKE_ACTION == 'apply-and-destroy' &&
           steps.configure.outcome == 'success' && steps.init.outcome == 'success'
         uses: ./.github/actions/github-oidc-token
         with:
@@ -195,7 +202,7 @@ jobs:
       - name: Terraform Destroy
         id: destroy
         if: >-
-          always() && inputs.action == 'apply-and-destroy' &&
+          always() && env.SPIKE_ACTION == 'apply-and-destroy' &&
           steps.oidc_for_destroy.outcome == 'success'
         shell: bash
         env:

@@ -266,8 +266,7 @@ commit before updating it.
 For **Demo Ansible WIF Credential Renewal**, use
 `.github/actions/github-oidc-token-refresh`, `.github/actions/ansible-oci-wif`,
 `examples/ansible/requirements.yml`, and
-`examples/ansible/extended-runtime`. The source-JWT refresher is shared with
-extended Terraform. Between module tasks, the playbook runs the adapter again
+`examples/ansible/extended-runtime`. Between module tasks, the playbook runs the adapter again
 and replaces the OCI UPST and matching private key together. Later `oracle.oci`
 tasks load the renewed files. One already-running module retains its in-memory
 signer and is not refreshed by file replacement.
@@ -279,26 +278,11 @@ use facts/status tasks. Its proof modes are 120 seconds and 65 minutes; the 65-m
 run is manual and opt-in. This remains an Ansible adapter pattern rather than
 native WIF support in the collection.
 
-## Long-running processes
+## RPST bucket demo
 
-The provider renews the OCI UPST automatically and rotates the associated RSA key. It rereads `OCI_WORKLOAD_IDENTITY_TOKEN_PATH` when it needs another exchange.
-
-GitHub JWTs are also short-lived. For a Terraform process that can exceed the
-OCI UPST lifetime, use the custom
-`.github/actions/github-oidc-token-refresh` extension to refresh the source
-token:
-
-```yaml
-- name: Create refreshable GitHub OIDC token file
-  uses: ./.github/actions/github-oidc-token-refresh
-  with:
-    audience: https://cloud.oracle.com
-    refresh_interval_minutes: 1
-```
-
-Do not externally replace the OCI UPST or private key. Those values are managed together inside the provider.
-
-The refresh action stores its daemon PID in a protected file beside the source JWT. The token-refresh workflow validates that file and the daemon command before stopping the exact process in an always-run cleanup, then removes the credential directory. The standard Terraform workflow also removes its source-JWT directory independently of plan, apply, or destroy success.
+The separate [RPST runbook](./spike/rpst/README.md) covers the test domain,
+Resource trust, repository secrets, bucket policy, and create-and-delete demo
+on `spike/rpst-terraform`.
 
 ## Troubleshooting
 
@@ -328,15 +312,6 @@ env | grep '^OCI_\(AUTH\|REGION\|WORKLOAD_IDENTITY\|TOKEN_EXCHANGE\)' | sed 's/C
 
 Required provider variables are documented in
 [Terraform examples](./examples/terraform/README.md).
-
-### Long run fails after the initial OCI token expires
-
-Use `.github/actions/github-oidc-token-refresh` only for **Demo Terraform
-Token Refresh**, which records the initial token-file modification time and
-fails unless the final time is strictly greater. GitHub OIDC JWTs expire roughly
-5 minutes after issuance (observed behavior; GitHub does not document the
-lifetime officially), which is why the extension accepts refresh intervals
-between 1 and 4 minutes. Never print the token contents.
 
 ## References
 

@@ -100,7 +100,7 @@ Examples:
 ```text
 docs(setup): clarify identity domain token setup
 fix(action): handle GitHub OIDC HTTP errors
-ci(workflows): add Terraform refresh demo
+ci(workflows): add RPST bucket demo
 ```
 
 ## Development checks
@@ -126,25 +126,17 @@ For formatting:
 terraform fmt -check -recursive
 ```
 
-For the extended-runtime example, initialize and validate its local module:
+For the RPST bucket demo, initialize and validate its local module:
 
 ```bash
-terraform -chdir=examples/terraform/extended-runtime init -backend=false
-terraform -chdir=examples/terraform/extended-runtime validate
+terraform -chdir=spike/rpst init -backend=false -input=false
+terraform -chdir=spike/rpst validate
 ```
 
 The standard example runs the pinned OCI Landing Zones Orchestrator checkout as
 Terraform's root module. Do not add a provider or a child-module wrapper under
 `examples/terraform/standard`; validate its pinned root and lock through the
 workflow's temporary-checkout procedure.
-
-If you change `examples/terraform/extended-runtime/`, validate that directory
-as well:
-
-```bash
-terraform -chdir=examples/terraform/extended-runtime init -backend=false
-terraform -chdir=examples/terraform/extended-runtime validate
-```
 
 For the read-only Ansible namespace example, validate its syntax after
 installing its pinned collection:
