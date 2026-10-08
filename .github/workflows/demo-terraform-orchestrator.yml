@@ -1,4 +1,4 @@
-name: Demo Terraform Orchestrator RPST Bucket
+name: Demo Terraform OCI LZ Orchestrator RPST Bucket
 
 on:
   workflow_dispatch:
@@ -57,7 +57,7 @@ jobs:
             exit 1
           fi
 
-      - name: Configure provider and Orchestrator inputs
+      - name: Configure provider and OCI LZ Orchestrator inputs
         id: configure
         shell: bash
         env:
@@ -95,7 +95,7 @@ jobs:
             echo "TF_DATA_DIR=$runtime_directory/terraform-data"
           } >> "$GITHUB_ENV"
 
-      - name: Fetch official Orchestrator
+      - name: Fetch official OCI LZ Orchestrator
         shell: bash
         run: |
           set -euo pipefail
@@ -213,8 +213,8 @@ jobs:
           DESTROY_OUTCOME: ${{ steps.destroy.outcome }}
         run: |
           {
-            echo '## Terraform Orchestrator RPST bucket demo'
-            echo "Orchestrator commit: $ORCHESTRATOR_COMMIT"
+            echo '## Terraform OCI LZ Orchestrator RPST bucket demo'
+            echo "OCI LZ Orchestrator commit: $ORCHESTRATOR_COMMIT"
             echo '| Phase | Outcome |'
             echo '| --- | --- |'
             echo "| Plan | ${PLAN_OUTCOME:-skipped} |"
