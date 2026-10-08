@@ -14,7 +14,9 @@ You need:
 - A compartment and region for the demo buckets.
 - A GitHub repository containing these workflows, permission to set its Actions
   secrets, and permission to run workflows.
-- Bash, OCI CLI, `jq`, and a browser for the trust configuration recipe below.
+- Bash, OCI CLI, `jq`, and GitHub CLI (`gh`), authenticated to your repository.
+  OCI session authentication opens a browser for sign-in; no OCI Console
+  configuration is required.
 
 Choose the executing repository before configuring policies. The OIDC
 `repository` claim is its actual `owner/repository`; a fork needs its own name
@@ -26,33 +28,93 @@ or group membership.
 
 ## 2. Create the Identity Domain
 
-In OCI Console, open **Identity & Security → Domains**, select the chosen
-compartment, and create a domain. Use a name such as `github-rpst`, select
-**Free** if available, and hide it from the sign-in page. Configure a domain
-administrator if your administrator does not already have access.
+Run the blocks in order in the same Bash session. Replace the region, tenancy,
+compartment, and repository values below. Use an administrator with access to
+the new domain. Keep shell tracing and debug logging disabled.
 
-Wait for **Active** and copy its HTTPS base URL without a trailing slash.
-Do not include `/admin/v1` or `/oauth2/v1/token` in the secret.
+```bash
+set -euo pipefail
+oci session authenticate --region eu-frankfurt-1 --profile-name rpst-admin
+export RPST_BOOTSTRAP_PROFILE=rpst-admin
+export OCI_REGION=eu-frankfurt-1
+export OCI_TENANCY='<tenancy_ocid>'
+export RPST_COMPARTMENT_ID='<compartment_ocid>'
+export RPST_REPOSITORY='<owner>/<repo>'
+export RPST_DOMAIN_NAME=github-rpst
+export RPST_APPLICATION_NAME=github-rpst-client
+export RPST_TRUST_NAME=github-rpst-trust
+export RPST_POLICY_NAME=github-rpst-buckets
+gh auth status
+```
 
-Use the domain's home region for these demo buckets. Additional domains are
-not automatically replicated to every subscribed region.
-[Oracle domain creation instructions](https://docs.oracle.com/en-us/iaas/Content/Identity/domains/to-create-new-identity-domain.htm).
+A profile name is a label; permissions come from the authenticated identity.
+If the OCI session expires, authenticate again with the same profile. The
+administrator configures OCI; the runtime application needs no admin roles.
+
+Create a Free domain, hidden on the sign-in page, and wait for its work request:
+
+```bash
+oci iam domain create \
+  --profile "$RPST_BOOTSTRAP_PROFILE" --auth security_token --region "$OCI_REGION" \
+  --compartment-id "$RPST_COMPARTMENT_ID" --display-name "$RPST_DOMAIN_NAME" \
+  --description 'GitHub Actions RPST reference' --home-region "$OCI_REGION" \
+  --license-type free --is-hidden-on-login true \
+  --wait-for-state SUCCEEDED --wait-interval-seconds 10 --query data.id --raw-output
+domain="$(oci iam domain list --compartment-id "$RPST_COMPARTMENT_ID" --all \
+  --profile "$RPST_BOOTSTRAP_PROFILE" --auth security_token --output json --query data |
+  jq -ce --arg name "$RPST_DOMAIN_NAME" \
+    '[.[] | select(."display-name" == $name)] |
+     if length == 1 then .[0] else error("Expected exactly one domain") end')"
+RPST_DOMAIN_ID="$(jq -er '.id' <<< "$domain")"
+domain="$(oci iam domain get --domain-id "$RPST_DOMAIN_ID" \
+  --profile "$RPST_BOOTSTRAP_PROFILE" --auth security_token --output json --query data)"
+jq -e '."lifecycle-state" == "ACTIVE"' <<< "$domain" > /dev/null
+RPST_DOMAIN_URL="$(jq -er '.url | rtrimstr("/")' <<< "$domain")"
+export RPST_DOMAIN_URL
+unset domain
+```
+
+The base URL must not include `/admin/v1` or `/oauth2/v1/token`. Use the domain's
+home region for these demo buckets; additional domains are not automatically
+replicated to every subscribed region. Run creation blocks once. Before retrying
+after an interruption, check whether their resources already exist.
+[OCI CLI domain creation](https://docs.oracle.com/en-us/iaas/tools/oci-cli/latest/oci_cli_docs/cmdref/iam/domain/create.html).
 
 ## 3. Create the runtime OAuth application
 
-Open the domain, then **Integrated applications → Add application →
-Confidential Application → Launch workflow**.
+Create an active confidential client with only the Client Credentials grant.
+The response contains its credentials: capture it in memory and never run this
+request without the assignment. No administrative role grants are created.
 
-1. Enter a name such as `github-rpst-client`.
-2. Under **Configure OAuth**, configure it as a client with the **Client
-   credentials** grant and client type **Confidential**.
-3. Leave administrative app roles unassigned. The runtime application does not
-   need Identity Domain Administrator or admin API access.
-4. Finish, store the client ID and secret securely, and activate the application.
+```bash
+application="$(
+  jq -n --arg name "$RPST_APPLICATION_NAME" '{
+    "schemas": ["urn:ietf:params:scim:schemas:oracle:idcs:App"],
+    "displayName": $name,
+    "basedOnTemplate": {"value": "CustomWebAppTemplateId"},
+    "isOAuthClient": true,
+    "clientType": "confidential",
+    "allowedGrants": ["client_credentials"],
+    "active": true
+  }' |
+    oci raw-request --profile "$RPST_BOOTSTRAP_PROFILE" --auth security_token \
+      --http-method POST \
+      --target-uri "$RPST_DOMAIN_URL/admin/v1/Apps?attributes=id,name,clientSecret" \
+      --request-body file:///dev/stdin --output json --query '{id:id,name:name,clientSecret:clientSecret}' |
+    jq -ce 'if (.status | startswith("2")) then .data
+            else error("Application creation failed: " + .status) end'
+)"
+RPST_APP_ID="$(printf '%s' "$application" | jq -er '.id')"
+test -n "$RPST_APP_ID"
+RPST_CLIENT_ID="$(printf '%s' "$application" | jq -er '.name')"
+RPST_CLIENT_SECRET="$(printf '%s' "$application" | jq -er '.clientSecret')"
+unset application
+```
 
-The administrator configures the trust and policies; the runtime client only
-performs token exchange.
-[Oracle confidential application instructions](https://docs.oracle.com/en-us/iaas/Content/Identity/applications/add-confidential-application.htm).
+Keep the client ID and secret as unexported shell variables until section 6
+transfers them directly to GitHub. Do not print them or save them to a file.
+The runtime client only performs token exchange.
+[Oracle application creation API](https://docs.oracle.com/en/cloud/paas/iam-domains-rest-api/op-admin-v1-apps-post.html).
 
 ## 4. Create the Resource trust
 
@@ -80,32 +142,20 @@ IAM conditions use `request.principal.ext_repository`.
 [Oracle RPST requirements](https://docs.oracle.com/en-us/iaas/Content/Identity/api-getstarted/token_exchange_grant_type_workload_id-federation.htm),
 [A-Team configuration example](https://www.ateam-oracle.com/oci-workload-identity-federation-using-ephemeral-rpst).
 
-Run the following blocks in Bash. The recipe uses an administrator's signed
-OCI CLI session, `jq`, and `raw-request` to send the complete trust configuration.
-Keep debug logging and shell tracing disabled.
+The recipe uses the administrator's signed OCI CLI session, `jq`, and
+`raw-request` to send the complete trust configuration.
 [OCI CLI raw-request reference](https://docs.oracle.com/en-us/iaas/tools/oci-cli/latest/oci_cli_docs/cmdref/raw-request.html).
 
-```bash
-oci session authenticate --region eu-frankfurt-1 --profile-name rpst-admin
-export RPST_BOOTSTRAP_PROFILE=rpst-admin
-export RPST_DOMAIN_URL='https://<domain>.identity.oraclecloud.com'
-```
-
-Replace the region and URL with yours. A profile name is a label; permissions
-come from the authenticated identity. The next block asks for the client ID
-without displaying it. It sends the JSON through standard input, checks the
-HTTP status, and prints only the trust ID. It needs no client secret and creates
-no local credential or response file.
+The next block uses the client ID captured above, sends JSON through standard
+input, checks the HTTP status, and prints only the trust ID. It needs no client
+secret and creates no local credential or response file.
 
 ```bash
-set -euo pipefail
-read -r -s -p 'Runtime OAuth client ID: ' RPST_CLIENT_ID
-printf '\n'
 test -n "$RPST_CLIENT_ID"
 
-jq -n --arg client_id "$RPST_CLIENT_ID" '{
+jq -n --arg client_id "$RPST_CLIENT_ID" --arg name "$RPST_TRUST_NAME" '{
   "schemas": ["urn:ietf:params:scim:schemas:oracle:idcs:IdentityPropagationTrust"],
-  "name": "github-rpst-trust",
+  "name": $name,
   "type": "JWT",
   "issuer": "https://token.actions.githubusercontent.com",
   "publicKeyEndpoint": "https://token.actions.githubusercontent.com/.well-known/jwks",
@@ -121,7 +171,6 @@ jq -n --arg client_id "$RPST_CLIENT_ID" '{
     --request-body file:///dev/stdin --output json --query id |
   jq -er 'if (.status | startswith("2")) then .data
           else error("Trust creation failed: " + .status) end'
-unset RPST_CLIENT_ID
 ```
 
 Run once per domain. Before retrying after an interruption, check whether the
@@ -131,15 +180,11 @@ client; its credentials do not belong in the repository secrets.
 
 ### Verify the application and trust
 
-After creation, verify the stored configuration rather than relying only on
-wizard completion. Keep the administrator session active and the profile and
-domain environment variables above. Set the two display names you created:
+After creation, verify the stored configuration. Keep the administrator session
+active and the profile, domain URL, and names configured above.
 
 ```bash
 set -euo pipefail
-export RPST_APPLICATION_NAME=github-rpst-client
-export RPST_TRUST_NAME=github-rpst-trust
-
 domain_read() {
   oci raw-request --profile "$RPST_BOOTSTRAP_PROFILE" --auth security_token \
     --http-method GET --target-uri "$RPST_DOMAIN_URL/admin/v1/$1" --output json --query "$2" |
@@ -183,33 +228,41 @@ by each check, keeps their values in shell variables, and prints only the
 check results. Client IDs and full responses are not printed.
 [Oracle application attributes parameter](https://docs.oracle.com/en/cloud/paas/iam-domains-rest-api/op-admin-v1-apps-get.html).
 
-These commands were executed on macOS with OCI CLI **3.83.0** and `jq` **1.7.1**
-on 8 October 2026. The creation command created a Resource trust in a dedicated
-domain, and the verification returned all eleven checks as `true`. The same
-verification also passed against the domain used by the three bucket demos.
+The CLI recipe was executed on macOS with OCI CLI **3.83.0**, `jq` **1.7.1**,
+and GitHub CLI. The stored application and trust returned all eleven checks as
+`true`. These checks also passed against the domain used by the three bucket
+demos.
 
 ## 5. Create IAM policies
 
-In **Identity & Security → Policies**, select the tenancy root and create a
-policy. Replace the repository and compartment placeholders:
+Create a policy in the tenancy root with the two statements below. The bucket
+rule uses the compartment OCID, including when the compartment is nested.
 
-```text
-Allow any-user to read objectstorage-namespaces in tenancy where all {request.principal.type='identityfederateddomainapp', request.principal.ext_repository='<owner>/<repo>'}
-Allow any-user to manage buckets in compartment <compartment> where all {request.principal.type='identityfederateddomainapp', request.principal.ext_repository='<owner>/<repo>'}
+```bash
+policy_statements="$(jq -cn \
+  --arg namespace_policy "Allow any-user to read objectstorage-namespaces in tenancy where all {request.principal.type='identityfederateddomainapp', request.principal.ext_repository='$RPST_REPOSITORY'}" \
+  --arg bucket_policy "Allow any-user to manage buckets in compartment id $RPST_COMPARTMENT_ID where all {request.principal.type='identityfederateddomainapp', request.principal.ext_repository='$RPST_REPOSITORY'}" \
+  '[$namespace_policy, $bucket_policy]')"
+RPST_POLICY_ID="$(oci iam policy create \
+  --profile "$RPST_BOOTSTRAP_PROFILE" --auth security_token \
+  --compartment-id "$OCI_TENANCY" --name "$RPST_POLICY_NAME" \
+  --description 'GitHub Actions RPST bucket access' --statements "$policy_statements" \
+  --wait-for-state ACTIVE --query data.id --raw-output)"
+unset policy_statements
 ```
 
 The first statement grants namespace access in the tenancy. The second grants
-bucket access only in the named compartment. For this repository, the value is
+bucket access only in the selected compartment. For this repository, the value is
 `dgutierrezcolodra/oci-terraform-github-actions-wif-example`.
 Allow time for IAM propagation. Token issuance alone does not grant bucket access.
+[Oracle policy syntax](https://docs.oracle.com/en-us/iaas/Content/Identity/Concepts/policysyntax.htm).
 
-Read back the domain and policy with the administrator profile. Copy their
-OCIDs from the Console details pages and replace the placeholders:
+Read back the domain and policy using the captured OCIDs:
 
 ```bash
-oci iam domain get --domain-id '<domain_ocid>' --profile rpst-admin --auth security_token \
+oci iam domain get --domain-id "$RPST_DOMAIN_ID" --profile "$RPST_BOOTSTRAP_PROFILE" --auth security_token \
   --query 'data.{name:"display-name",state:"lifecycle-state",url:url,region:"home-region",compartment:"compartment-id"}'
-oci iam policy get --policy-id '<policy_ocid>' --profile rpst-admin --auth security_token \
+oci iam policy get --policy-id "$RPST_POLICY_ID" --profile "$RPST_BOOTSTRAP_PROFILE" --auth security_token \
   --query 'data.{name:name,state:"lifecycle-state",compartment:"compartment-id",statements:statements}'
 ```
 
@@ -222,7 +275,6 @@ OCI configuration used by this reference.
 
 ## 6. Set GitHub repository secrets
 
-Open **Settings → Secrets and variables → Actions → New repository secret**.
 All workflows use the same six secrets:
 
 | Secret | Value |
@@ -237,9 +289,24 @@ All workflows use the same six secrets:
 The Orchestrator demo also needs `OCI_TENANCY`, containing your tenancy OCID.
 This supplies the upstream `tenancy_ocid` input; it is not an API credential.
 
-Enter credentials directly in the secrets UI or transfer them through a tool's
-standard input. Never put secrets, JWTs, RPSTs, or private keys into commands,
-commits, screenshots, logs, or job summaries.
+Transfer the values through standard input. The client secret is never exported,
+written to a file, or placed in an external command's arguments. The `printf`
+output goes directly to `gh`, not to the terminal:
+
+```bash
+printf '%s' "$RPST_DOMAIN_URL" | gh secret set RPST_DOMAIN_BASE_URL --repo "$RPST_REPOSITORY"
+printf '%s' "$RPST_CLIENT_ID" | gh secret set RPST_CLIENT_ID --repo "$RPST_REPOSITORY"
+printf '%s' "$RPST_CLIENT_SECRET" | gh secret set RPST_CLIENT_SECRET --repo "$RPST_REPOSITORY"
+printf '%s' 'github_terraform' | gh secret set RPST_RESOURCE_TYPE --repo "$RPST_REPOSITORY"
+printf '%s' "$RPST_COMPARTMENT_ID" | gh secret set RPST_COMPARTMENT_ID --repo "$RPST_REPOSITORY"
+printf '%s' "$OCI_REGION" | gh secret set OCI_REGION --repo "$RPST_REPOSITORY"
+printf '%s' "$OCI_TENANCY" | gh secret set OCI_TENANCY --repo "$RPST_REPOSITORY"
+unset RPST_CLIENT_ID RPST_CLIENT_SECRET RPST_APP_ID
+gh secret list --repo "$RPST_REPOSITORY"
+```
+
+The list shows secret names, not values. Never put credentials, JWTs, RPSTs, or
+private keys in commits, screenshots, logs, or job summaries.
 
 ## 7. Run the demos
 
@@ -276,6 +343,25 @@ describe the selected upstream commit and input format.
 2. Select the branch and run. It exchanges credentials, reads the namespace,
    creates a private bucket, obtains fresh credentials, and deletes the bucket.
 3. Check create and delete outcomes in the summary and confirm bucket absence.
+
+### Confirm bucket deletion
+
+Use the workflow's numeric run ID from its URL. The administrator CLI lists
+matching demo buckets and fails if any remain; successful deletion returns `[]`.
+
+```bash
+RPST_RUN_ID='<run_id>'
+RPST_NAMESPACE="$(oci os ns get --profile "$RPST_BOOTSTRAP_PROFILE" --auth security_token \
+  --region "$OCI_REGION" --query data --raw-output)"
+oci os bucket list --profile "$RPST_BOOTSTRAP_PROFILE" --auth security_token \
+  --region "$OCI_REGION" --namespace-name "$RPST_NAMESPACE" \
+  --compartment-id "$RPST_COMPARTMENT_ID" --all --query 'data[].name' --output json |
+  jq -e --arg id "$RPST_RUN_ID" \
+    'map(select(. == ("rpst-terraform-" + $id) or
+                . == ("rpst-orchestrator-" + $id) or
+                . == ("rpst-ansible-" + $id))) |
+     ., (if length == 0 then empty else error("Demo bucket still exists") end)'
+```
 
 ## 8. Diagnose failures
 
