@@ -14,7 +14,7 @@ You need:
 - A compartment and region for the demo buckets.
 - A GitHub repository containing these workflows, permission to set its Actions
   secrets, and permission to run workflows.
-- OCI CLI, Python 3, and a browser for the trust configuration recipe below.
+- Bash, OCI CLI, `jq`, and a browser for the trust configuration recipe below.
 
 Choose the executing repository before configuring policies. The OIDC
 `repository` claim is its actual `owner/repository`; a fork needs its own name
@@ -80,8 +80,10 @@ IAM conditions use `request.principal.ext_repository`.
 [Oracle RPST requirements](https://docs.oracle.com/en-us/iaas/Content/Identity/api-getstarted/token_exchange_grant_type_workload_id-federation.htm),
 [A-Team configuration example](https://www.ateam-oracle.com/oci-workload-identity-federation-using-ephemeral-rpst).
 
-The recipe uses an administrator's signed OCI CLI session and `raw-request`
-to send the complete trust configuration. Keep debug logging disabled.
+Run the following blocks in Bash. The recipe uses an administrator's signed
+OCI CLI session, `jq`, and `raw-request` to send the complete trust configuration.
+Keep debug logging and shell tracing disabled.
+[OCI CLI raw-request reference](https://docs.oracle.com/en-us/iaas/tools/oci-cli/latest/oci_cli_docs/cmdref/raw-request.html).
 
 ```bash
 oci session authenticate --region eu-frankfurt-1 --profile-name rpst-admin
@@ -90,54 +92,36 @@ export RPST_DOMAIN_URL='https://<domain>.identity.oraclecloud.com'
 ```
 
 Replace the region and URL with yours. A profile name is a label; permissions
-come from the authenticated identity. Run this locally. It asks for the client
-ID without displaying it, keeps the response in memory, and prints only the
-HTTP status and trust ID. It does not need the client secret.
+come from the authenticated identity. The next block asks for the client ID
+without displaying it. It sends the JSON through standard input, checks the
+HTTP status, and prints only the trust ID. It needs no client secret and creates
+no local credential or response file.
 
 ```bash
-python3 - <<'PY'
-import getpass
-import json
-import os
-import subprocess
-import sys
-from urllib.parse import urlsplit
+set -euo pipefail
+read -r -s -p 'Runtime OAuth client ID: ' RPST_CLIENT_ID
+printf '\n'
+test -n "$RPST_CLIENT_ID"
 
-profile = os.environ["RPST_BOOTSTRAP_PROFILE"]
-domain_url = os.environ["RPST_DOMAIN_URL"].rstrip("/")
-parsed = urlsplit(domain_url)
-if parsed.scheme != "https" or not parsed.hostname or parsed.path or parsed.query or parsed.fragment or parsed.username:
-    sys.exit("Use the HTTPS domain base URL without a path")
-client_id = getpass.getpass("Runtime OAuth client ID: ")
-if not client_id:
-    sys.exit("Client ID is required")
-body = {
-    "schemas": ["urn:ietf:params:scim:schemas:oracle:idcs:IdentityPropagationTrust"],
-    "name": "github-rpst-trust",
-    "type": "JWT",
-    "issuer": "https://token.actions.githubusercontent.com",
-    "publicKeyEndpoint": "https://token.actions.githubusercontent.com/.well-known/jwks",
-    "subjectType": "Resource",
-    "allowImpersonation": True,
-    "impersonatingResource": "github_terraform",
-    "claimPropagations": ["ext_repository", "ext_workflow_ref"],
-    "oauthClients": [client_id],
-    "active": True,
-}
-result = subprocess.run(
-    ["oci", "raw-request", "--profile", profile, "--auth", "security_token",
-     "--http-method", "POST", "--target-uri", domain_url + "/admin/v1/IdentityPropagationTrusts",
-     "--request-body", json.dumps(body)],
-    capture_output=True, text=True,
-)
-if result.returncode:
-    sys.exit("OCI request failed. Check the session and administrator permissions; response suppressed.")
-response = json.loads(result.stdout)
-print("HTTP status:", response["status"])
-if not response["status"].startswith("2"):
-    sys.exit("Trust creation failed. Check issuer uniqueness and trust settings; response suppressed.")
-print("Trust ID:", response["data"]["id"])
-PY
+jq -n --arg client_id "$RPST_CLIENT_ID" '{
+  "schemas": ["urn:ietf:params:scim:schemas:oracle:idcs:IdentityPropagationTrust"],
+  "name": "github-rpst-trust",
+  "type": "JWT",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "publicKeyEndpoint": "https://token.actions.githubusercontent.com/.well-known/jwks",
+  "subjectType": "Resource",
+  "allowImpersonation": true,
+  "impersonatingResource": "github_terraform",
+  "claimPropagations": ["ext_repository", "ext_workflow_ref"],
+  "oauthClients": [$client_id],
+  "active": true
+}' |
+  oci raw-request --profile "$RPST_BOOTSTRAP_PROFILE" --auth security_token \
+    --http-method POST --target-uri "$RPST_DOMAIN_URL/admin/v1/IdentityPropagationTrusts" \
+    --request-body file:///dev/stdin --output json --query id |
+  jq -er 'if (.status | startswith("2")) then .data
+          else error("Trust creation failed: " + .status) end'
+unset RPST_CLIENT_ID
 ```
 
 Run once per domain. Before retrying after an interruption, check whether the
@@ -152,59 +136,57 @@ wizard completion. Keep the administrator session active and the profile and
 domain environment variables above. Set the two display names you created:
 
 ```bash
+set -euo pipefail
 export RPST_APPLICATION_NAME=github-rpst-client
 export RPST_TRUST_NAME=github-rpst-trust
-python3 - <<'PYVERIFY'
-import json
-import os
-import subprocess
-import sys
-from urllib.parse import urlencode
 
-base = os.environ["RPST_DOMAIN_URL"].rstrip("/")
-profile = os.environ["RPST_BOOTSTRAP_PROFILE"]
-
-def read(resource, filter_text):
-    uri = base + "/admin/v1/" + resource + "?" + urlencode({"filter": filter_text})
-    result = subprocess.run(
-        ["oci", "raw-request", "--profile", profile, "--auth", "security_token",
-         "--http-method", "GET", "--target-uri", uri],
-        capture_output=True, text=True,
-    )
-    if result.returncode:
-        sys.exit("Administrative read failed; check session and permissions. Response suppressed.")
-    response = json.loads(result.stdout)
-    if not response["status"].startswith("2"):
-        sys.exit("Administrative read returned non-2xx; response suppressed.")
-    return response["data"]
-
-apps = read("Apps", "displayName eq " + json.dumps(os.environ["RPST_APPLICATION_NAME"]))
-trusts = read("IdentityPropagationTrusts", "name eq " + json.dumps(os.environ["RPST_TRUST_NAME"]))
-if apps["totalResults"] != 1 or trusts["totalResults"] != 1:
-    sys.exit("Expected exactly one application and one trust with these names")
-app, trust = apps["Resources"][0], trusts["Resources"][0]
-grants = read("Grants", "grantee.value eq " + json.dumps(app["id"]))
-checks = {
-    "app_active": app["active"] is True,
-    "confidential_client": app["clientType"] == "confidential" and app["isOAuthClient"] is True,
-    "client_credentials_only": app["allowedGrants"] == ["client_credentials"],
-    "no_admin_roles": grants["totalResults"] == 0,
-    "active_resource_trust": trust["active"] is True and trust["subjectType"] == "Resource",
-    "jwt_type": trust["type"] == "JWT",
-    "issuer": trust["issuer"] == "https://token.actions.githubusercontent.com",
-    "jwks": trust["publicKeyEndpoint"] == "https://token.actions.githubusercontent.com/.well-known/jwks",
-    "impersonation": trust["allowImpersonation"] is True and trust["impersonatingResource"] == "github_terraform",
-    "claim_propagations": trust["claimPropagations"] == ["ext_repository", "ext_workflow_ref"],
-    "client_binding": trust["oauthClients"] == [app["name"]],
+domain_read() {
+  oci raw-request --profile "$RPST_BOOTSTRAP_PROFILE" --auth security_token \
+    --http-method GET --target-uri "$RPST_DOMAIN_URL/admin/v1/$1" --output json --query "$2" |
+    jq -e 'if (.status | startswith("2")) then .data
+           else error("Administrative read failed: " + .status) end'
 }
-print(json.dumps(checks, sort_keys=True))
-if not all(checks.values()):
-    sys.exit("Correct the failed settings before running the workflows")
-PYVERIFY
+
+app_filter="$(jq -rn --arg name "$RPST_APPLICATION_NAME" '"displayName eq " + ($name | tojson) | @uri')"
+trust_filter="$(jq -rn --arg name "$RPST_TRUST_NAME" '"name eq " + ($name | tojson) | @uri')"
+app="$(domain_read "Apps?attributes=id,name,active,clientType,isOAuthClient,allowedGrants&filter=$app_filter" '{count:totalResults,app:Resources[0].{id:id,name:name,active:active,clientType:clientType,isOAuthClient:isOAuthClient,allowedGrants:allowedGrants}}')"
+trust="$(domain_read "IdentityPropagationTrusts?filter=$trust_filter" '{count:totalResults,trust:Resources[0].{active:active,subjectType:subjectType,type:type,issuer:issuer,publicKeyEndpoint:publicKeyEndpoint,allowImpersonation:allowImpersonation,impersonatingResource:impersonatingResource,claimPropagations:claimPropagations,oauthClients:oauthClients}}')"
+jq -ne --argjson app "$app" --argjson trust "$trust" \
+  'if $app.count == 1 and $trust.count == 1 then true
+   else error("Expected exactly one application and one trust") end' > /dev/null
+app_id="$(jq -r '.app.id' <<< "$app")"
+grant_filter="$(jq -rn --arg id "$app_id" '"grantee.value eq " + ($id | tojson) | @uri')"
+grants="$(domain_read "Grants?filter=$grant_filter" totalResults)"
+
+jq -ne --argjson app "$app" --argjson trust "$trust" --argjson grants "$grants" '
+  $app.app as $a | $trust.trust as $t | {
+    app_active: ($a.active == true),
+    confidential_client: ($a.clientType == "confidential" and $a.isOAuthClient == true),
+    client_credentials_only: ($a.allowedGrants == ["client_credentials"]),
+    no_admin_roles: ($grants == 0),
+    active_resource_trust: ($t.active == true and $t.subjectType == "Resource"),
+    jwt_type: ($t.type == "JWT"),
+    issuer: ($t.issuer == "https://token.actions.githubusercontent.com"),
+    jwks: ($t.publicKeyEndpoint == "https://token.actions.githubusercontent.com/.well-known/jwks"),
+    impersonation: ($t.allowImpersonation == true and $t.impersonatingResource == "github_terraform"),
+    claim_propagations: ($t.claimPropagations == ["ext_repository", "ext_workflow_ref"]),
+    client_binding: ($t.oauthClients == [$a.name])
+  } | ., (if all(.[]; . == true) then empty else error("Correct the failed settings") end)'
+unset app trust grants app_id app_filter trust_filter grant_filter
+unset -f domain_read
 ```
 
-All checks must be `true`. This verification reads the app, trust, and role
-grants without printing the client ID, client secret, or full responses.
+All checks must be `true`; a failed check returns a nonzero exit status. The
+application request selects its required fields with the API's `attributes`
+parameter, excluding the client secret. The CLI then selects the fields used
+by each check, keeps their values in shell variables, and prints only the
+check results. Client IDs and full responses are not printed.
+[Oracle application attributes parameter](https://docs.oracle.com/en/cloud/paas/iam-domains-rest-api/op-admin-v1-apps-get.html).
+
+These commands were executed on macOS with OCI CLI **3.83.0** and `jq` **1.7.1**
+on 8 October 2026. The creation command created a Resource trust in a dedicated
+domain, and the verification returned all eleven checks as `true`. The same
+verification also passed against the domain used by the three bucket demos.
 
 ## 5. Create IAM policies
 
