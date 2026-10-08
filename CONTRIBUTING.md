@@ -1,200 +1,46 @@
-# Contributing to this repository
+# Contributing
 
-We welcome contributions to this example repository. Contributions can include
-bug fixes, documentation improvements, Terraform example updates, GitHub Actions
-workflow improvements, and security hardening.
+Keep contributions focused on GitHub Actions OIDC, OCI Resource trusts, and
+RPST authentication for the Terraform and Ansible bucket demos.
 
-This repository demonstrates GitHub Actions OIDC to OCI IAM Workload Identity
-Federation using the OCI Terraform provider's native
-`WorkloadIdentityFederation` authentication. Please keep changes focused on
-that purpose.
+## Contributions and commits
 
-## Table of Contents
-
-- [Opening issues](#opening-issues)
-- [Security issues](#security-issues)
-- [Prerequisites for contributions](#prerequisites-for-contributions)
-- [Commit messages](#commit-messages)
-- [Development checks](#development-checks)
-- [Pull request process](#pull-request-process)
-- [Documentation standards](#documentation-standards)
-- [Code of conduct](#code-of-conduct)
-
-## Opening issues
-
-Use GitHub issues to report bugs, request enhancements, or discuss proposed
-changes before opening a larger pull request.
-
-For bug reports, include:
-
-- What you expected to happen
-- What actually happened
-- The workflow, Terraform command, or setup step involved
-- Sanitized logs or error messages
-- Your OCI region, Terraform version, and relevant GitHub Actions runner details
-
-Do not include secrets, access tokens, private keys, OCI session tokens, client
-secrets, real OCIDs that identify private resources, or downloaded token files.
-
-## Security issues
-
-If you believe you found a security vulnerability, do not open a public GitHub
-issue with exploit details or credentials.
-
-Use GitHub private vulnerability reporting if it is enabled for the repository,
-or contact a maintainer privately. Keep any reproduction minimal and remove all
-real credentials, tenancy identifiers, tokens, and private keys.
-
-## Prerequisites for contributions
-
-Before we can review or accept source code or documentation contributions, you
-may need to digitally sign the
-[Oracle Contributor Agreement (OCA)](https://oca.opensource.oracle.com/) using
-the OCA Signing Service. This only needs to be done once; if you have already
-signed it for another Oracle repository or project, you do not need to sign it
-again.
-
-All commit messages should include the following line using the same name and
-email address you used to sign the OCA:
-
-```text
-Signed-off-by: Your Name <you@example.org>
-```
-
-You can add this automatically when committing:
+Contributors may need to sign the
+[Oracle Contributor Agreement](https://oca.opensource.oracle.com/) before
+source code or documentation contributions can be accepted. Include your name
+and email in each commit's `Signed-off-by` line:
 
 ```bash
 git commit --signoff
 ```
 
-## Commit messages
-
-Use [Conventional Commits](https://www.conventionalcommits.org/) where practical.
-
-Format:
-
-```text
-<type>(<scope>): <short description>
-```
-
-Common types:
-
-- `feat`: new behavior or example capability
-- `fix`: bug fix
-- `docs`: documentation-only change
-- `test`: test or validation change
-- `ci`: GitHub Actions workflow change
-- `chore`: maintenance change
-
-Useful scopes for this repository include:
-
-- `action`
-- `setup`
-- `terraform`
-- `examples`
-- `workflows`
-- `docs`
-
-Examples:
-
-```text
-docs(setup): clarify identity domain token setup
-fix(action): handle GitHub OIDC HTTP errors
-ci(workflows): add RPST bucket demo
-```
+Use a focused branch and describe the change and its verification. Update the
+[setup runbook](./SETUP.md) and demo instructions when behavior, inputs, or
+secrets change. Use Conventional Commits where practical.
 
 ## Development checks
 
-Run the checks that match the files you changed.
-
-### Python action
-
 ```bash
-python3 -m py_compile \
-  .github/actions/github-oidc-token-refresh/main.py \
-  .github/actions/ansible-oci-wif/main.py
-```
-
-Local tests remain outside Git. Do not add, stage, upload, or reference local
-test files from tracked automation. Never track `tests/`.
-
-### Terraform examples
-
-For formatting:
-
-```bash
-terraform fmt -check -recursive
-```
-
-For the RPST bucket demo, initialize and validate its local module:
-
-```bash
-terraform -chdir=spike/rpst init -backend=false -input=false
-terraform -chdir=spike/rpst validate
-```
-
-The standard example runs the pinned OCI Landing Zones Orchestrator checkout as
-Terraform's root module. Do not add a provider or a child-module wrapper under
-`examples/terraform/standard`; validate its pinned root and lock through the
-workflow's temporary-checkout procedure.
-
-For the read-only Ansible namespace example, validate its syntax after
-installing its pinned collection:
-
-```bash
-ansible-playbook --syntax-check examples/ansible/namespace-validation/playbook.yml
-ansible-playbook --syntax-check examples/ansible/extended-runtime/playbook.yml
-PYTHONPYCACHEPREFIX=/private/tmp/oci-wif-ansible-extended-pycache \
-  python3 -m unittest -v tests.test_repository_layout tests.test_ansible_extended_runtime
-```
-
-The extended Ansible proof is controller-local and renews credentials between
-tasks, not inside a running OCI module. Its 65-minute proof is manual and
-opt-in.
-Keep `examples/ansible/requirements.yml`, `examples/ansible/extended-runtime`,
-and `.github/workflows/demo-ansible-extended.yml` aligned.
-
-### Documentation
-
-For documentation-only changes:
-
-```bash
+terraform fmt -check -recursive examples/terraform
+terraform -chdir=examples/terraform/simple init -backend=false -input=false
+terraform -chdir=examples/terraform/simple validate
+actionlint .github/workflows/*.yml
+ansible-playbook --syntax-check examples/ansible/bucket/playbook.yml
 git diff --check
 ```
 
-Also check that links, workflow names, secrets, and file paths match the current
-repository contents.
+Install the pinned Ansible dependencies listed in its
+[demo instructions](./examples/ansible/bucket/README.md) before checking the
+playbook. Verify local documentation links and workflow names. Keep local
+verification scripts outside tracked automation.
 
-## Pull request process
+## Reporting issues
 
-1. Open or reference an issue for the change unless it is a small documentation
-   fix.
-2. Fork the repository and create a focused branch.
-3. Keep pull requests small enough to review.
-4. Update `README.md`, `SETUP.md`, or the relevant example README when
-   behavior, inputs, secrets, setup steps, or workflow names change.
-5. Run the relevant checks from [Development checks](#development-checks).
-6. Explain what changed and how reviewers can validate it.
-7. Include `Signed-off-by` in each commit when required.
+Include the affected workflow or setup step, expected result, actual result,
+current tool versions, and sanitized error messages. Never include client
+secrets, tokens, private keys, state, plans, or confidential tenancy details.
 
-## Documentation standards
+Report security vulnerabilities privately to a maintainer or through GitHub
+private vulnerability reporting when available.
 
-This repository is intended to be copied and adapted by users. Documentation
-must be precise and safe by default.
-
-- Prefer official OCI and GitHub documentation links for setup or security
-  claims.
-- Do not document unverified token lifetime behavior as a guarantee.
-- Do not recommend storing OCI API keys in GitHub for this flow.
-- Do not add workflows that upload OIDC tokens, OCI security tokens, private
-  keys, Terraform state, or token files as artifacts.
-- Use placeholders such as `<DOMAIN_URL>`, `<IDA_ACCESS_TOKEN>`, and
-  `ocid1.tenancy.oc1..aaaaaaa...` instead of real values.
-- Keep examples aligned with the actual workflow names and action inputs in
-  this repository.
-
-## Code of conduct
-
-Be respectful and constructive. Focus reviews on correctness, security,
-maintainability, and whether the change helps users understand or safely run the
-example.
+Keep reviews respectful and focused on correctness, security, and clarity.

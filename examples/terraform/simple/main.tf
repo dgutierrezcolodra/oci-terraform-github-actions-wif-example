@@ -4,7 +4,7 @@ terraform {
   required_providers {
     oci = {
       source  = "oracle/oci"
-      version = ">= 8.29.0, < 10.0.0"
+      version = "9.8.0"
     }
   }
 }
@@ -28,7 +28,7 @@ variable "bucket_name" {
 
 data "oci_objectstorage_namespace" "this" {}
 
-resource "oci_objectstorage_bucket" "spike" {
+resource "oci_objectstorage_bucket" "demo" {
   compartment_id = var.compartment_id
   namespace      = data.oci_objectstorage_namespace.this.namespace
   name           = var.bucket_name

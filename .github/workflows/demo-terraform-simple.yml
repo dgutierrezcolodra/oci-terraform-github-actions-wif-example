@@ -1,12 +1,12 @@
-name: Spike RPST Terraform
+name: Demo Terraform RPST Bucket
 
 on:
   push:
     branches:
       - spike/rpst-terraform
     paths:
-      - .github/workflows/spike-rpst.yml
-      - spike/rpst/main.tf
+      - .github/workflows/demo-terraform-simple.yml
+      - examples/terraform/simple/main.tf
   workflow_dispatch:
     inputs:
       action:
@@ -19,14 +19,14 @@ on:
           - apply-and-destroy
 
 jobs:
-  rpst_spike:
+  rpst_bucket:
     runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
     env:
       TF_IN_AUTOMATION: "true"
-      SPIKE_ACTION: ${{ inputs.action || 'apply-and-destroy' }}
+      DEMO_ACTION: ${{ inputs.action || 'apply-and-destroy' }}
 
     steps:
       - name: Checkout repository
@@ -78,7 +78,7 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          runtime_directory="$RUNNER_TEMP/rpst-spike"
+          runtime_directory="$RUNNER_TEMP/rpst-terraform"
           install -d -m 700 "$runtime_directory"
           key_file="$runtime_directory/key.pem"
           response_file="$runtime_directory/response.json"
@@ -104,7 +104,7 @@ jobs:
           fi
 
           jq -r '.token | split(".")[1] | gsub("-"; "+") | gsub("_"; "/") | @base64d' "$response_file" |
-            jq -c '{claim_names: (keys | sort), selected_claims: (with_entries(select(.key == "ttype" or .key == "iss" or .key == "res_type" or .key == "tenant" or .key == "res_tenant" or .key == "sub" or (.key | startswith("ext_"))))), lifetime_seconds: (.exp - .iat)}'
+            jq -c '{claim_names: (keys | sort), selected_claims: (with_entries(select(.key == "ttype" or .key == "iss" or .key == "res_type" or .key == "tenant" or .key == "res_tenant" or .key == "sub" or (.key | startswith("ext_") or startswith("var_ext_"))))), lifetime_seconds: (.exp - .iat)}'
 
       - name: Phase 3 - refresh GitHub OIDC token
         uses: ./.github/actions/github-oidc-token
@@ -123,7 +123,7 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          install -d -m 700 "$RUNNER_TEMP/rpst-spike/terraform-data"
+          install -d -m 700 "$RUNNER_TEMP/rpst-terraform/terraform-data"
           {
             echo 'OCI_AUTH=WorkloadIdentityFederation'
             echo "OCI_REGION=$RPST_REGION"
@@ -135,8 +135,8 @@ jobs:
             echo 'OCI_TOKEN_EXCHANGE_SUBJECT_TOKEN_TYPE=jwt'
             echo "TF_VAR_region=$RPST_REGION"
             echo "TF_VAR_compartment_id=$RPST_COMPARTMENT_ID"
-            echo "TF_VAR_bucket_name=rpst-spike-${{ github.run_id }}"
-            echo "TF_DATA_DIR=$RUNNER_TEMP/rpst-spike/terraform-data"
+            echo "TF_VAR_bucket_name=rpst-terraform-${{ github.run_id }}"
+            echo "TF_DATA_DIR=$RUNNER_TEMP/rpst-terraform/terraform-data"
           } >> "$GITHUB_ENV"
 
       - name: Terraform Init
@@ -145,14 +145,14 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          terraform -chdir=spike/rpst init -input=false -lockfile=readonly
+          terraform -chdir=examples/terraform/simple init -input=false -lockfile=readonly
 
       - name: Terraform Validate
         shell: bash
         run: |
           set -euo pipefail
           umask 077
-          terraform -chdir=spike/rpst validate
+          terraform -chdir=examples/terraform/simple validate
 
       - name: Refresh GitHub OIDC token for plan
         uses: ./.github/actions/github-oidc-token
@@ -167,33 +167,33 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          terraform -chdir=spike/rpst plan -input=false \
-            -state="$RUNNER_TEMP/rpst-spike/terraform.tfstate" \
-            -out="$RUNNER_TEMP/rpst-spike/spike.tfplan"
+          terraform -chdir=examples/terraform/simple plan -input=false \
+            -state="$RUNNER_TEMP/rpst-terraform/terraform.tfstate" \
+            -out="$RUNNER_TEMP/rpst-terraform/bucket.tfplan"
 
       - name: Refresh GitHub OIDC token for apply
-        if: env.SPIKE_ACTION == 'apply-and-destroy'
+        if: env.DEMO_ACTION == 'apply-and-destroy'
         uses: ./.github/actions/github-oidc-token
         with:
           audience: https://cloud.oracle.com
 
       - name: Terraform Apply
         id: apply
-        if: env.SPIKE_ACTION == 'apply-and-destroy'
+        if: env.DEMO_ACTION == 'apply-and-destroy'
         shell: bash
         env:
           OCI_TOKEN_EXCHANGE_CLIENT_SECRET: ${{ secrets.RPST_CLIENT_SECRET }}
         run: |
           set -euo pipefail
           umask 077
-          terraform -chdir=spike/rpst apply -input=false -auto-approve \
-            -state="$RUNNER_TEMP/rpst-spike/terraform.tfstate" \
-            "$RUNNER_TEMP/rpst-spike/spike.tfplan"
+          terraform -chdir=examples/terraform/simple apply -input=false -auto-approve \
+            -state="$RUNNER_TEMP/rpst-terraform/terraform.tfstate" \
+            "$RUNNER_TEMP/rpst-terraform/bucket.tfplan"
 
       - name: Refresh GitHub OIDC token for destroy
         id: oidc_for_destroy
         if: >-
-          always() && env.SPIKE_ACTION == 'apply-and-destroy' &&
+          always() && env.DEMO_ACTION == 'apply-and-destroy' &&
           steps.configure.outcome == 'success' && steps.init.outcome == 'success'
         uses: ./.github/actions/github-oidc-token
         with:
@@ -202,7 +202,7 @@ jobs:
       - name: Terraform Destroy
         id: destroy
         if: >-
-          always() && env.SPIKE_ACTION == 'apply-and-destroy' &&
+          always() && env.DEMO_ACTION == 'apply-and-destroy' &&
           steps.oidc_for_destroy.outcome == 'success'
         shell: bash
         env:
@@ -210,8 +210,8 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          terraform -chdir=spike/rpst destroy -auto-approve -input=false \
-            -state="$RUNNER_TEMP/rpst-spike/terraform.tfstate"
+          terraform -chdir=examples/terraform/simple destroy -auto-approve -input=false \
+            -state="$RUNNER_TEMP/rpst-terraform/terraform.tfstate"
 
       - name: Remove runtime files
         if: always()
@@ -222,7 +222,7 @@ jobs:
             echo 'RUNNER_TEMP is not a safe cleanup root' >&2
             exit 1
           fi
-          rm -rf -- "$RUNNER_TEMP/rpst-spike" "$RUNNER_TEMP/oci-wif"
+          rm -rf -- "$RUNNER_TEMP/rpst-terraform" "$RUNNER_TEMP/oci-wif"
 
       - name: Write job summary
         if: always()
@@ -234,7 +234,7 @@ jobs:
           DESTROY_OUTCOME: ${{ steps.destroy.outcome }}
         run: |
           {
-            echo '## RPST Terraform spike'
+            echo '## Terraform RPST bucket demo'
             echo '| Phase | Outcome |'
             echo '| --- | --- |'
             echo "| Phase 2 exchange | ${PHASE2_OUTCOME:-skipped} |"

@@ -1,324 +1,265 @@
-# OCI setup for GitHub Actions WIF
+# RPST reference implementation runbook
 
-*Current on 12 August 2026*
+This runbook configures OCI Workload Identity Federation for GitHub Actions
+with ephemeral resource principal session tokens. Both demos create one private
+Object Storage bucket and delete it in the same run. Terraform uses native
+provider WIF; Ansible uses the OCI collection's resource principal authentication.
 
-This guide configures GitHub Actions as an external workload identity for the
-repository's OCI Terraform provider 8.29.0 baseline. Generic WIF support first
-appeared in provider 8.22.0, but this reference requires and locks 8.29.0. The
-runtime workflow is non-interactive and does not use OCI user
-API keys.
-
-Use this setup for GitHub-hosted runners or self-hosted runners outside OCI. If
-the runner is an OCI Compute instance, prefer [Instance
-Principals](https://docs.oracle.com/en-us/iaas/Content/Identity/Tasks/callingservicesfrominstances.htm).
-If it runs as a pod in an enhanced OKE cluster, prefer [OKE Workload
-Identity](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contenggrantingworkloadaccesstoresources.htm).
-Generic WIF is the safe external-runner alternative when neither OCI-native
-identity is available.
-
-## Before you start
+## 1. Prerequisites
 
 You need:
 
-- Administrator access to the OCI Identity Domain used for the trust.
-- The Identity Domain URL, such as `https://idcs-<identifier>.identity.oraclecloud.com`, without a trailing slash.
-- A target OCI compartment and permission to create IAM policies.
-- An Identity Domain administrator bearer token for the one-time SCIM calls.
+- An OCI administrator who can create an Identity Domain, configure its
+  applications and trusts, and create IAM policies.
+- A compartment and region for the demo buckets.
+- A GitHub repository containing these workflows, permission to set its Actions
+  secrets, and permission to run workflows.
+- OCI CLI, Python 3, and a browser for the trust configuration recipe below.
 
-For a one-time setup, an administrator can generate a personal access token from **My profile → My access tokens**, selecting access to invoke Identity Domain APIs with the **Identity Domain Administrator** role. An alternative is a separate confidential application with that administrator application role. Do not reuse the runtime token-exchange application for administration.
+Choose the executing repository before configuring policies. The OIDC
+`repository` claim is its actual `owner/repository`; a fork needs its own name
+in the policy and its own Actions secrets.
 
-## 1. Create a service user
+Use a dedicated Identity Domain for the reference. OCI requires issuer
+uniqueness within a domain. The Resource trust needs no runtime service user
+or group membership.
 
-In the OCI Identity Domain used for automation, create a service user such as `github-actions-terraform`. A service user cannot sign in interactively and cannot have API keys.
+## 2. Create the Identity Domain
 
-You can create it in the console or with an Identity Domain administrator access token:
+In OCI Console, open **Identity & Security → Domains**, select the chosen
+compartment, and create a domain. Use a name such as `github-rpst`, select
+**Free** if available, and hide it from the sign-in page. Configure a domain
+administrator if your administrator does not already have access.
+
+Wait for **Active** and copy its HTTPS base URL without a trailing slash.
+Do not include `/admin/v1` or `/oauth2/v1/token` in the secret.
+
+Use the domain's home region for these demo buckets. Additional domains are
+not automatically replicated to every subscribed region.
+[Oracle domain creation instructions](https://docs.oracle.com/en-us/iaas/Content/Identity/domains/to-create-new-identity-domain.htm).
+
+## 3. Create the runtime OAuth application
+
+Open the domain, then **Integrated applications → Add application →
+Confidential Application → Launch workflow**.
+
+1. Enter a name such as `github-rpst-client`.
+2. Under **Configure OAuth**, configure it as a client with the **Client
+   credentials** grant and client type **Confidential**.
+3. Leave administrative app roles unassigned. The runtime application does not
+   need Identity Domain Administrator or admin API access.
+4. Finish, store the client ID and secret securely, and activate the application.
+
+The administrator configures the trust and policies; the runtime client only
+performs token exchange.
+[Oracle confidential application instructions](https://docs.oracle.com/en-us/iaas/Content/Identity/applications/add-confidential-application.htm).
+
+## 4. Create the Resource trust
+
+Use these fields:
+
+| Field | Value |
+| --- | --- |
+| `name` | `github-rpst-trust` |
+| `type` | `JWT` |
+| `issuer` | `https://token.actions.githubusercontent.com` |
+| `publicKeyEndpoint` | `https://token.actions.githubusercontent.com/.well-known/jwks` |
+| `subjectType` | `Resource` |
+| `allowImpersonation` | `true` |
+| `impersonatingResource` | `github_terraform` |
+| `claimPropagations` | `["ext_repository", "ext_workflow_ref"]` |
+| `oauthClients` | Array containing the runtime application's client ID |
+| `active` | `true` |
+| `schemas` | `["urn:ietf:params:scim:schemas:oracle:idcs:IdentityPropagationTrust"]` |
+
+The resource type is a free string. `impersonatingResource`, the exchange's
+`res_type`, and `RPST_RESOURCE_TYPE` must match. Both demos can use this same
+trust and client. Two claims are propagated here; OCI allows up to three.
+The RPST payload exposes them as `var_ext_repository` and `var_ext_workflow_ref`;
+IAM conditions use `request.principal.ext_repository`.
+[Oracle RPST requirements](https://docs.oracle.com/en-us/iaas/Content/Identity/api-getstarted/token_exchange_grant_type_workload_id-federation.htm),
+[A-Team configuration example](https://www.ateam-oracle.com/oci-workload-identity-federation-using-ephemeral-rpst).
+
+The recipe uses an administrator's signed OCI CLI session and `raw-request`
+to send the complete trust configuration. Keep debug logging disabled.
 
 ```bash
-curl --request POST \
-  --url "<DOMAIN_URL>/admin/v1/Users" \
-  --header "Authorization: Bearer <IDA_ACCESS_TOKEN>" \
-  --header "Content-Type: application/json" \
-  --data '{
-    "schemas": [
-      "urn:ietf:params:scim:schemas:core:2.0:User",
-      "urn:ietf:params:scim:schemas:oracle:idcs:extension:user:User"
-    ],
-    "urn:ietf:params:scim:schemas:oracle:idcs:extension:user:User": {
-      "serviceUser": true
-    },
-    "userName": "github-actions-terraform"
-  }'
+oci session authenticate --region eu-frankfurt-1 --profile-name rpst-admin
+export RPST_BOOTSTRAP_PROFILE=rpst-admin
+export RPST_DOMAIN_URL='https://<domain>.identity.oraclecloud.com'
 ```
 
-Save the response `id`. The Identity Propagation Trust needs the Identity Domain user ID, not the user's OCI OCID.
+Replace the region and URL with yours. A profile name is a label; permissions
+come from the authenticated identity. Run this locally. It asks for the client
+ID without displaying it, keeps the response in memory, and prints only the
+HTTP status and trust ID. It does not need the client secret.
 
-## 2. Grant least-privilege OCI permissions
+```bash
+python3 - <<'PY'
+import getpass
+import json
+import os
+import subprocess
+import sys
+from urllib.parse import urlsplit
 
-Add the service user to an Identity Domain group. This repository creates and deletes one empty Object Storage bucket. It therefore needs bucket management in the target compartment and permission to read the tenancy-level Object Storage namespace:
-
-```text
-Allow group GitHubAutomationUsers to manage buckets in compartment <compartment-name>
-Allow group GitHubAutomationUsers to read objectstorage-namespaces in tenancy
-```
-
-The `objectstorage-namespaces` statement must use `in tenancy` and must be created in the root compartment. The bucket statement can be created in the target compartment or a parent compartment. Add `manage objects` separately only if your Terraform configuration also manages objects.
-
-For a non-default Identity Domain, qualify the group:
-
-```text
-Allow group '<identity-domain-name>'/'GitHubAutomationUsers' to manage buckets in compartment <compartment-name>
-Allow group '<identity-domain-name>'/'GitHubAutomationUsers' to read objectstorage-namespaces in tenancy
-```
-
-Do not use `manage all-resources` for this example.
-
-## 3. Create the runtime token-exchange application
-
-In the same OCI Identity Domain, create a dedicated runtime application:
-
-1. Add a confidential application.
-2. Select **Configure this application as a client now**.
-3. Enable the **Client credentials** grant.
-4. Assign no Identity Domain administrator or application roles.
-5. Activate the application.
-6. Save its client ID and client secret.
-
-This application authenticates the call to `<DOMAIN_URL>/oauth2/v1/token`. The token exchange itself uses the OAuth token-exchange grant; the OCI provider sends the runtime application's client ID and secret as client authentication. Its client ID must also appear in the trust's `oauthClients` list.
-
-Use a different application with the **Identity Domain Administrator** application role, or a personal administrator access token, for the one-time SCIM setup. The runtime application must not have that role.
-
-## 4. Determine the exact GitHub claims
-
-This repository requests this audience:
-
-```text
-https://cloud.oracle.com
-```
-
-The GitHub issuer is:
-
-```text
-https://token.actions.githubusercontent.com
-```
-
-With GitHub's default subject format, a workflow running from a branch without
-a job-level environment has this subject:
-
-```text
-repo:<owner>/<repository>:ref:refs/heads/<protected-branch>
-```
-
-The checked-in workflows use `main`, so their default subject is:
-
-```text
-repo:<owner>/<repository>:ref:refs/heads/main
-```
-
-Use the exact repository name and protected branch, including case. When
-copying the reference, replace `main` consistently in the workflow invocation
-and trust if you use another protected deployment branch. The cloud jobs
-intentionally declare no GitHub environment and use no OIDC subject
-customization. A job-level environment changes GitHub's default `sub`, so it
-would not match this branch rule.
-
-## 5. Create the Identity Propagation Trust
-
-Create one active JWT trust for the GitHub issuer. OCI uses the issuer to identify the trust, so keep the issuer unique within the Identity Domain. If a trust for GitHub already exists, add the required OAuth client and exact subject mapping to that trust instead of creating a second active trust with the same issuer.
-
-Replace the placeholders and submit the payload to:
-
-```text
-POST <DOMAIN_URL>/admin/v1/IdentityPropagationTrusts
-```
-
-```json
-{
-  "active": true,
-  "allowImpersonation": true,
-  "issuer": "https://token.actions.githubusercontent.com",
-  "name": "GitHub Actions to OCI Terraform",
-  "oauthClients": [
-    "<CLIENT_ID>"
-  ],
-  "publicKeyEndpoint": "https://token.actions.githubusercontent.com/.well-known/jwks",
-  "clientClaimName": "aud",
-  "clientClaimValues": [
-    "https://cloud.oracle.com"
-  ],
-  "impersonationServiceUsers": [
-    {
-      "rule": "sub eq 'repo:<owner>/<repository>:ref:refs/heads/main'",
-      "value": "<IDENTITY_DOMAIN_SERVICE_USER_ID>"
-    }
-  ],
-  "subjectType": "User",
-  "type": "JWT",
-  "schemas": [
-    "urn:ietf:params:scim:schemas:oracle:idcs:IdentityPropagationTrust"
-  ]
+profile = os.environ["RPST_BOOTSTRAP_PROFILE"]
+domain_url = os.environ["RPST_DOMAIN_URL"].rstrip("/")
+parsed = urlsplit(domain_url)
+if parsed.scheme != "https" or not parsed.hostname or parsed.path or parsed.query or parsed.fragment or parsed.username:
+    sys.exit("Use the HTTPS domain base URL without a path")
+client_id = getpass.getpass("Runtime OAuth client ID: ")
+if not client_id:
+    sys.exit("Client ID is required")
+body = {
+    "schemas": ["urn:ietf:params:scim:schemas:oracle:idcs:IdentityPropagationTrust"],
+    "name": "github-rpst-trust",
+    "type": "JWT",
+    "issuer": "https://token.actions.githubusercontent.com",
+    "publicKeyEndpoint": "https://token.actions.githubusercontent.com/.well-known/jwks",
+    "subjectType": "Resource",
+    "allowImpersonation": True,
+    "impersonatingResource": "github_terraform",
+    "claimPropagations": ["ext_repository", "ext_workflow_ref"],
+    "oauthClients": [client_id],
+    "active": True,
 }
+result = subprocess.run(
+    ["oci", "raw-request", "--profile", profile, "--auth", "security_token",
+     "--http-method", "POST", "--target-uri", domain_url + "/admin/v1/IdentityPropagationTrusts",
+     "--request-body", json.dumps(body)],
+    capture_output=True, text=True,
+)
+if result.returncode:
+    sys.exit("OCI request failed. Check the session and administrator permissions; response suppressed.")
+response = json.loads(result.stdout)
+print("HTTP status:", response["status"])
+if not response["status"].startswith("2"):
+    sys.exit("Trust creation failed. Check issuer uniqueness and trust settings; response suppressed.")
+print("Trust ID:", response["data"]["id"])
+PY
 ```
 
-The payload authorizes only `main`. Replace that branch consistently if your
-deployment branch has another name. Do not add temporary branch mappings or
-wildcards to make a run pass; update the single exact mapping through your
-normal change-control process.
+Run once per domain. Before retrying after an interruption, check whether the
+trust exists. If the session expires, authenticate again with the same profile.
+Any administrator OAuth client used for setup must be separate from the runtime
+client; its credentials do not belong in the repository secrets.
 
-`clientClaimName` and `clientClaimValues` restrict the token audience. `impersonationServiceUsers` independently restricts which GitHub subjects may impersonate the service user. Both controls are intentional.
+## 5. Create IAM policies
 
-Do not use `sub eq *` in production. It would allow every accepted GitHub subject from the issuer and audience to impersonate the same OCI service user.
+In **Identity & Security → Policies**, select the tenancy root and create a
+policy. Replace the repository and compartment placeholders:
 
-Verify the saved mapping explicitly because normal trust reads can omit it:
-
-```bash
-curl --silent \
-  --header "Authorization: Bearer <IDA_ACCESS_TOKEN>" \
-  "<DOMAIN_URL>/admin/v1/IdentityPropagationTrusts/<TRUST_ID>?attributes=impersonationServiceUsers" \
-  | jq .
+```text
+Allow any-user to read objectstorage-namespaces in tenancy where all {request.principal.type='identityfederateddomainapp', request.principal.ext_repository='<owner>/<repo>'}
+Allow any-user to manage buckets in compartment <compartment> where all {request.principal.type='identityfederateddomainapp', request.principal.ext_repository='<owner>/<repo>'}
 ```
 
-Also verify the trust metadata and audience restriction:
+The first statement grants namespace access in the tenancy. The second grants
+bucket access only in the named compartment. For this repository, the value is
+`dgutierrezcolodra/oci-terraform-github-actions-wif-example`.
+Allow time for IAM propagation. Token issuance alone does not grant bucket access.
 
-```bash
-curl --silent \
-  --header "Authorization: Bearer <IDA_ACCESS_TOKEN>" \
-  "<DOMAIN_URL>/admin/v1/IdentityPropagationTrusts/<TRUST_ID>?attributes=name,active,issuer,oauthClients,publicKeyEndpoint,clientClaimName,clientClaimValues" \
-  | jq .
-```
+## 6. Set GitHub repository secrets
 
-The saved values must include the GitHub issuer, GitHub JWKS endpoint, runtime OAuth client ID, `clientClaimName` set to `aud`, and `https://cloud.oracle.com` in `clientClaimValues`.
+Open **Settings → Secrets and variables → Actions → New repository secret**.
+Both workflows use the same six secrets:
 
-## 6. Configure GitHub Actions
+| Secret | Value |
+| --- | --- |
+| `RPST_DOMAIN_BASE_URL` | Domain HTTPS base URL without trailing slash |
+| `RPST_CLIENT_ID` | Runtime application's client ID |
+| `RPST_CLIENT_SECRET` | Runtime application's client secret |
+| `RPST_RESOURCE_TYPE` | `github_terraform`, matching the trust |
+| `RPST_COMPARTMENT_ID` | Bucket compartment OCID |
+| `OCI_REGION` | Bucket region; use the domain's home region |
 
-Add these repository Actions secrets under **Settings → Secrets and variables → Actions**:
+Enter credentials directly in the secrets UI or transfer them through a tool's
+standard input. Never put secrets, JWTs, RPSTs, or private keys into commands,
+commits, screenshots, logs, or job summaries.
 
-| Name | Type | Value |
-|---|---|---|
-| `CLIENT_ID` | Secret | Runtime token-exchange application client ID |
-| `CLIENT_SECRET` | Secret | Runtime token-exchange application client secret |
-| `DOMAIN_BASE_URL` | Secret or variable | Identity Domain URL without a trailing slash |
-| `OCI_REGION` | Secret or variable | Region such as `eu-madrid-1` |
-| `OCI_TENANCY` | Secret | Tenancy OCID required by the Orchestrator root |
-| `COMPARTMENT_ID` | Secret | Target compartment OCID |
+## 7. Run the demos
 
-The Terraform standard workflow references all six values through the `secrets`
-context. `DOMAIN_BASE_URL` and `OCI_REGION` can be converted to repository
-variables only if the workflow references are updated consistently.
-`COMPARTMENT_ID` is a repository secret and is not a workflow-dispatch input,
-so a caller cannot redirect an apply to an arbitrary compartment. The jobs do
-not declare a GitHub environment and therefore have no Environment approval
-gate. `apply-and-destroy` remains an explicit manual workflow choice. If you
-store non-sensitive values as repository variables, change their workflow
-references from `secrets.NAME` to `vars.NAME`.
+GitHub requires the workflow file on the repository's default branch for manual
+dispatch. In a customer repository, place the reference files on that branch.
+[GitHub manual workflow requirements](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow).
 
-The standard Orchestrator workflow needs `OCI_TENANCY` to resolve the tenancy
-home region. It remains a repository secret and is used only to generate the
-temporary Orchestrator input file; the provider still authenticates through the
-exchanged UPST.
+### Terraform
 
-The Terraform workflows pass `CLIENT_SECRET` only to the steps that call the
-configured provider. They mask it before shell use and do not persist it
-through `GITHUB_ENV`.
+1. Open **Actions → Demo Terraform RPST Bucket → Run workflow**.
+2. Select the branch and `plan`. The raw exchange checks OCI configuration;
+   Terraform then plans one bucket using its own RPST and key.
+3. Expect HTTP 200, claim names, selected diagnostic values, lifetime, and a plan
+   for one private bucket. Payload inspection does not verify its signature.
+4. Run again with `apply-and-destroy`. Check both outcomes in the summary and
+   confirm the bucket is absent from the compartment.
 
-The standard Terraform and Ansible workflows obtain their source JWT once
-through `.github/actions/github-oidc-token`. That action uses official
-`actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3` (`v9.0.0`),
-writes the JWT atomically below `RUNNER_TEMP`, exports only its path, and does
-not refresh it. `.github/actions/ansible-oci-wif` remains the Oracle SDK
-compatibility bridge for the Ansible collection.
+### Ansible
 
-The bridge exports `OCI_CONFIG_FILE`, `OCI_ANSIBLE_AUTH_TYPE=security_token`,
-`OCI_ANSIBLE_SECURITY_TOKEN_FILE`, and `OCI_ANSIBLE_PRIVATE_KEY_FILE`; its safe
-action outputs are the protected config, security-token, and private-key paths.
+1. Open **Actions → Demo Ansible RPST Bucket → Run workflow**.
+2. Select the branch and run. It exchanges credentials, reads the namespace,
+   creates a private bucket, obtains fresh credentials, and deletes the bucket.
+3. Check create and delete outcomes in the summary and confirm bucket absence.
 
-## 7. Verify with a plan
+### Reference branch execution
 
-From the branch configured in the trust, run **Demo Terraform Apply
-(Standard)** with action `plan`. In this repository that branch is `main`. A
-successful run should show:
+On `spike/rpst-terraform`, restricted push triggers allow execution without
+changing `main`. Changes to the Terraform workflow or `main.tf` run
+`apply-and-destroy`. Changes to the Ansible workflow, credential action,
+playbook, or requirements run the Ansible bucket demo. Documentation changes
+alone do not start either workflow. Bucket names include the unique run ID.
 
-- The GitHub OIDC token file was created.
-- Terraform selected the locked OCI provider 8.29.0 baseline.
-- Terraform completed the OCI data-source reads and produced a plan.
-- No `~/.oci/config`, OCI private key, or OCI security-token file was created by the workflow.
+## 8. Diagnose failures
 
-Run `apply-and-destroy` only after the plan succeeds. It creates and removes the validation bucket in the same job, while the local Terraform state is still available. Configure a remote backend before adapting this example to manage persistent infrastructure.
+| Observation | What to check |
+| --- | --- |
+| Manual dispatch unavailable | The workflow must exist on the default branch. |
+| Input validation fails | All six secrets must exist in the executing repository. |
+| Raw exchange or Ansible exchange fails | Domain URL, active client, credentials, trust issuer uniqueness, JWKS endpoint, and matching `res_type`. |
+| Raw exchange passes; Terraform authentication fails | Provider or SDK RPST handling; check the `tenant` claim. |
+| Exchange passes; Object Storage access denied | IAM propagation, both policies, repository claim, compartment, and region. |
+| Terraform checksum error | Check the committed lock; keep checksum validation enabled. |
+| Delete or destroy fails after creation | Find the run's bucket in the compartment and remove it manually. |
 
-## 8. Verify Ansible collection access
+The raw Terraform exchange uses `continue-on-error`; inspect its result and
+Terraform's result separately. The workflow prints only HTTP status, permitted
+error fields, claim names, selected diagnostic claims, and token lifetime.
+Neither workflow requests `rpst_exp`. Observe the issued lifetime; the recorded
+Terraform execution received 1,200 seconds. These short demos obtain fresh
+credentials before operations and do not require a background refresh process.
 
-From the branch configured in the trust, run **Demo Ansible WIF Namespace
-Validation** as a manual, read-only check. It uses `CLIENT_ID`,
-`CLIENT_SECRET`, `DOMAIN_BASE_URL`, and `OCI_REGION` described above.
+## 9. Runtime cleanup and teardown
 
-`oracle.oci` does not consume the OCI Terraform provider's native WIF
-configuration directly. The workflow uses the local
-`.github/actions/ansible-oci-wif` bridge only for Ansible: it exchanges the
-GitHub OIDC token for ephemeral security-token credentials used by the
-collection's namespace facts module. This is not an OCI API-key fallback, and
-no user API key or `~/.oci/config` is used.
+All credential files stay under `$RUNNER_TEMP`: the source JWT in `oci-wif`,
+Terraform data, plan, and local state in `rpst-terraform`, and Ansible RPST and
+key in `oci-ansible-wif`. Sensitive files use mode 600 and directories mode 700.
+Dependency executables retain their required executable permissions.
 
-The workflow installs `oracle.oci` 5.6.0 from the pinned Git commit in
-`examples/ansible/requirements.yml` because that version is not published to
-Ansible Galaxy. The runner therefore needs `git`, and this installation does
-not use Galaxy collection-signature verification. Review the pinned source
-commit before updating it.
+The raw exchange deletes its key and response on exit. Always-run cleanup
+removes the runtime directories, including Ansible dependencies and temporary
+files. Client secrets are step-level environment values and never written to
+`GITHUB_ENV` or a file. Keep `TF_LOG`, shell tracing, Ansible verbosity, and HTTP
+debugging disabled. Do not upload credentials, state, or plans as artifacts.
 
-For **Demo Ansible WIF Credential Renewal**, use
-`.github/actions/github-oidc-token-refresh`, `.github/actions/ansible-oci-wif`,
-`examples/ansible/requirements.yml`, and
-`examples/ansible/extended-runtime`. Between module tasks, the playbook runs the adapter again
-and replaces the OCI UPST and matching private key together. Later `oracle.oci`
-tasks load the renewed files. One already-running module retains its in-memory
-signer and is not refreshed by file replacement.
+Terraform's local backend receives an explicit runtime state path. Cleanup
+removes state even when destroy fails; another run cannot recover it. Use the
+bucket name `rpst-terraform-<run_id>` or `rpst-ansible-<run_id>` for manual cleanup.
 
-The controller-local proof distributes no credentials to managed hosts and
-creates, updates, or deletes no OCI resource. For a long service operation,
-submit asynchronously with `wait: false`, renew at a later task boundary, then
-use facts/status tasks. Its proof modes are 120 seconds and 65 minutes; the 65-minute
-run is manual and opt-in. This remains an Ansible adapter pattern rather than
-native WIF support in the collection.
+When retiring the reference:
 
-## RPST bucket demo
+1. Confirm all demo buckets are gone. Remove objects before deleting a nonempty
+   bucket.
+2. Remove the five `RPST_*` secrets; keep `OCI_REGION` if other consumers need it.
+3. Deactivate and delete the runtime application and trust.
+4. Delete only the IAM policy created for this reference.
+5. Remove the dedicated domain when no longer needed, following Console
+   requirements. Preserve shared compartments and unrelated resources.
 
-The separate [RPST runbook](./spike/rpst/README.md) covers the test domain,
-Resource trust, repository secrets, bucket policy, and create-and-delete demo
-on `spike/rpst-terraform`.
+## Execution record
 
-## Troubleshooting
+Record tool versions, outcomes, and claim names. Never record full tokens or
+credentials.
 
-### No matching impersonation rule
-
-Decode the current GitHub JWT payload without logging the complete token.
-Compare its `iss`, `aud`, and `sub` with the trust. Confirm the workflow ran
-from the configured protected branch, the repository name and ref match
-exactly, and the job has no `environment:` declaration.
-
-### No unique trust
-
-Check for multiple active trusts with `https://token.actions.githubusercontent.com` as issuer. Consolidate the subject mappings into one uniquely selectable trust.
-
-### `invalid_client`
-
-Verify that `CLIENT_ID` and `CLIENT_SECRET` belong to the runtime application, the application is active, and its client ID is present in `oauthClients`.
-
-### Terraform reports missing WIF configuration
-
-Confirm the installed provider version and the environment:
-
-```bash
-terraform providers
-env | grep '^OCI_\(AUTH\|REGION\|WORKLOAD_IDENTITY\|TOKEN_EXCHANGE\)' | sed 's/CLIENT_SECRET=.*/CLIENT_SECRET=***REDACTED***/'
-```
-
-Required provider variables are documented in
-[Terraform examples](./examples/terraform/README.md).
-
-## References
-
-- [OCI Terraform provider 8.22.0 changelog](https://github.com/oracle/terraform-provider-oci/blob/v8.22.0/CHANGELOG.md)
-- [OCI JWT-to-UPST exchange](https://docs.oracle.com/en-us/iaas/Content/Identity/api-getstarted/json_web_token_exchange.htm)
-- [Oracle Core Technology blog: WIF with Microsoft Entra ID and Keycloak](https://blogs.oracle.com/coretec/oci-workload-identity-federation-wif-with-microsoft-entra-id-applications-and-keycloak)
-- [OCI IdentityPropagationTrust model](https://docs.oracle.com/en-us/iaas/tools/python/latest/api/identity_domains/models/oci.identity_domains.models.IdentityPropagationTrust.html)
-- [OCI provider 8.29.0 WIF implementation](https://github.com/oracle/terraform-provider-oci/blob/v8.29.0/internal/provider/workload_identity_federation.go)
-- [GitHub OIDC reference](https://docs.github.com/en/actions/reference/security/oidc)
-- [GitHub OIDC discovery document](https://token.actions.githubusercontent.com/.well-known/openid-configuration)
+| Date | Demo | Tool / provider version | Exchange | Create / apply | Delete / destroy | RPST lifetime (s) | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-08 | Terraform | Terraform 1.16.5 / OCI 9.8.0 | HTTP 200 | 1 bucket created | 1 bucket deleted | 1200 | [Execution](https://github.com/dgutierrezcolodra/oci-terraform-github-actions-wif-example/actions/runs/37760577325); `tenant`, `res_tenant`, `var_ext_repository`, `var_ext_workflow_ref` present; bucket absence confirmed in OCI. |

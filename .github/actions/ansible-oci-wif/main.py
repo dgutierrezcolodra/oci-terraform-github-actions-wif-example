@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Create ephemeral OCI security-token credentials for the OCI Ansible collection."""
+"""Create ephemeral RPST credentials for the OCI Ansible collection."""
 
 from __future__ import annotations
 
+import base64
 import os
 import pathlib
 import tempfile
-from collections.abc import Callable
-from typing import Any
+from urllib.parse import urlsplit
 
 
 def required_env(name: str) -> str:
@@ -24,20 +24,6 @@ def required_config_value(name: str) -> str:
     if "\n" in value or "\r" in value:
         raise RuntimeError(f"Invalid value for environment variable: {name}")
     return value
-
-
-def source_jwt_reader(path: pathlib.Path) -> Callable[[], str]:
-    """Return a callback so the SDK reads the current source JWT from disk."""
-    if not path.is_file():
-        raise RuntimeError("OCI_WORKLOAD_IDENTITY_TOKEN_PATH must name a file")
-
-    def read_jwt() -> str:
-        token = path.read_text(encoding="utf-8").strip()
-        if not token:
-            raise RuntimeError("OCI workload identity token file is empty")
-        return token
-
-    return read_jwt
 
 
 def atomic_write(path: pathlib.Path, content: str | bytes) -> None:
@@ -67,13 +53,6 @@ def atomic_write(path: pathlib.Path, content: str | bytes) -> None:
         raise
 
 
-def serialize_private_key(private_key: Any) -> bytes:
-    """Serialize the signer's ephemeral proof-of-possession key as PEM."""
-    from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat
-
-    return private_key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption())
-
-
 def append_command_values(variable: str, values: dict[str, pathlib.Path | str]) -> None:
     """Append non-secret paths or environment settings to a GitHub command file."""
     command_file = os.environ.get(variable)
@@ -89,74 +68,83 @@ def append_command_values(variable: str, values: dict[str, pathlib.Path | str]) 
             stream.write(f"{name}={value}\n")
 
 
-def create_signer(jwt_reader: Callable[[], str]) -> Any:
-    """Construct the OCI SDK signer without ever persisting client credentials."""
+def exchange_rpst(source_token_path: pathlib.Path) -> tuple[str, bytes]:
+    """Exchange the source JWT and a generated public key for an RPST."""
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat, PublicFormat
+    from oci._vendor import requests
+
+    domain_url = required_config_value("OCI_TOKEN_EXCHANGE_DOMAIN_URL").rstrip("/")
+    parsed = urlsplit(domain_url)
+    if parsed.scheme != "https" or not parsed.hostname or parsed.path or parsed.query or parsed.fragment or parsed.username:
+        raise RuntimeError("Use an HTTPS Identity Domain base URL without a path")
+    source_token = source_token_path.read_text(encoding="utf-8").strip()
+    if not source_token:
+        raise RuntimeError("OCI workload identity token file is empty")
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public_key = base64.b64encode(private_key.public_key().public_bytes(
+        Encoding.DER, PublicFormat.SubjectPublicKeyInfo,
+    )).decode("ascii")
     try:
-        from oci.auth.signers import TokenExchangeSigner
-    except ImportError as exc:
-        raise RuntimeError("The OCI Python SDK is required to exchange the workload identity token") from exc
+        response = requests.post(
+            domain_url + "/oauth2/v1/token",
+            auth=(required_config_value("OCI_TOKEN_EXCHANGE_CLIENT_ID"),
+                  required_config_value("OCI_TOKEN_EXCHANGE_CLIENT_SECRET")),
+            data={
+                "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
+                "requested_token_type": "urn:oci:token-type:oci-rpst",
+                "subject_token": source_token,
+                "subject_token_type": "jwt",
+                "public_key": public_key,
+                "res_type": required_config_value("OCI_TOKEN_EXCHANGE_RESOURCE_TYPE"),
+            },
+            timeout=60, allow_redirects=False,
+        )
+        if not 200 <= response.status_code < 300:
+            raise RuntimeError(f"RPST exchange failed: HTTP {response.status_code}")
+        token = response.json().get("token")
+        if not isinstance(token, str) or not token:
+            raise RuntimeError("RPST exchange returned no token")
+    except RuntimeError:
+        raise
+    except Exception:
+        raise RuntimeError("RPST exchange failed; response suppressed") from None
+    return token, private_key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption())
 
-    return TokenExchangeSigner(
-        jwt_or_func=jwt_reader,
-        oci_domain_url=required_config_value("OCI_TOKEN_EXCHANGE_DOMAIN_URL"),
-        client_id=required_config_value("OCI_TOKEN_EXCHANGE_CLIENT_ID"),
-        client_secret=required_config_value("OCI_TOKEN_EXCHANGE_CLIENT_SECRET"),
-        region=required_config_value("OCI_REGION"),
-    )
 
-
-def main(token_exchange_signer: Callable[..., Any] | None = None) -> None:
-    """Exchange the GitHub JWT and write OCI collection-compatible credentials."""
+def main() -> None:
+    """Write protected RPST files for oracle.oci resource principal authentication."""
     runner_temp = pathlib.Path(required_env("RUNNER_TEMP")).resolve()
-    credentials_dir = runner_temp / "oci-ansible-wif"
+    if runner_temp == pathlib.Path("/"):
+        raise RuntimeError("RUNNER_TEMP is not a safe runtime root")
     source_token_path = pathlib.Path(required_env("OCI_WORKLOAD_IDENTITY_TOKEN_PATH")).resolve()
-    jwt_reader = source_jwt_reader(source_token_path)
-    signer = token_exchange_signer(
-        jwt_or_func=jwt_reader,
-        oci_domain_url=required_config_value("OCI_TOKEN_EXCHANGE_DOMAIN_URL"),
-        client_id=required_config_value("OCI_TOKEN_EXCHANGE_CLIENT_ID"),
-        client_secret=required_config_value("OCI_TOKEN_EXCHANGE_CLIENT_SECRET"),
-        region=required_config_value("OCI_REGION"),
-    ) if token_exchange_signer else create_signer(jwt_reader)
-
-    security_token_path = credentials_dir / "security_token"
+    if not source_token_path.is_relative_to(runner_temp) or not source_token_path.is_file():
+        raise RuntimeError("The source JWT must be a file below RUNNER_TEMP")
+    region = required_config_value("OCI_REGION")
+    credentials_dir = runner_temp / "oci-ansible-wif"
+    if credentials_dir.is_symlink():
+        raise RuntimeError("Credential directory must not be a symlink")
+    token, private_key = exchange_rpst(source_token_path)
+    rpst_path = credentials_dir / "rpst"
     private_key_path = credentials_dir / "private_key.pem"
-    config_path = credentials_dir / "config"
-    security_token = signer.get_security_token()
-    if not isinstance(security_token, str) or not security_token:
-        raise RuntimeError("OCI token exchange did not return a security token")
-
-    atomic_write(security_token_path, security_token)
-    atomic_write(private_key_path, serialize_private_key(signer.private_key))
-    atomic_write(
-        config_path,
-        "[DEFAULT]\n"
-        f"region={required_config_value('OCI_REGION')}\n"
-        f"security_token_file={security_token_path}\n"
-        f"key_file={private_key_path}\n",
-    )
-    append_command_values(
-        "GITHUB_ENV",
-        {
-            "OCI_CONFIG_FILE": config_path,
-            "OCI_ANSIBLE_AUTH_TYPE": "security_token",
-            "OCI_ANSIBLE_SECURITY_TOKEN_FILE": security_token_path,
-            "OCI_ANSIBLE_PRIVATE_KEY_FILE": private_key_path,
-        },
-    )
-    append_command_values(
-        "GITHUB_OUTPUT",
-        {
-            "config_path": config_path,
-            "security_token_path": security_token_path,
-            "private_key_path": private_key_path,
-        },
-    )
-    print("Ephemeral OCI Ansible security-token credentials created")
+    atomic_write(rpst_path, token)
+    atomic_write(private_key_path, private_key)
+    append_command_values("GITHUB_ENV", {
+        "OCI_ANSIBLE_AUTH_TYPE": "resource_principal",
+        "OCI_RESOURCE_PRINCIPAL_VERSION": "2.2",
+        "OCI_RESOURCE_PRINCIPAL_RPST": rpst_path,
+        "OCI_RESOURCE_PRINCIPAL_PRIVATE_PEM": private_key_path,
+        "OCI_RESOURCE_PRINCIPAL_REGION": region,
+    })
+    append_command_values("GITHUB_OUTPUT", {
+        "rpst_path": rpst_path,
+        "private_key_path": private_key_path,
+    })
+    print("Ephemeral OCI Ansible RPST credentials created")
 
 
 if __name__ == "__main__":
     try:
         main()
-    except RuntimeError as exc:
-        raise SystemExit(f"Error: {exc}") from exc
+    except Exception:
+        raise SystemExit("Unable to create RPST credentials; check configuration and connectivity. Details suppressed.") from None
