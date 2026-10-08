@@ -1,4 +1,4 @@
-# Terraform Orchestrator RPST bucket demo
+# Terraform OCI LZ Orchestrator RPST bucket demo
 
 This demo runs the official [OCI Landing Zones Orchestrator](https://github.com/oci-landing-zones/terraform-oci-modules-orchestrator)
 as the Terraform root with provider-native Workload Identity Federation. It
@@ -10,7 +10,7 @@ Follow the [setup runbook](../../../SETUP.md) first.
 Set `OCI_TENANCY` to your tenancy OCID in repository Actions secrets, in addition
 to the six shared secrets in the runbook.
 
-1. Open **Actions → Demo Terraform Orchestrator RPST Bucket → Run workflow**.
+1. Open **Actions → Demo Terraform OCI LZ Orchestrator RPST Bucket → Run workflow**.
 2. Select `plan`. The workflow requires exactly one bucket creation with
    `NoPublicAccess` before it can proceed to apply.
 3. Run again with `apply-and-destroy` to create and delete the bucket.

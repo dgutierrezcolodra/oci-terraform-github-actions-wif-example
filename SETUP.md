@@ -324,10 +324,10 @@ dispatch. In a customer repository, place the reference files on that branch.
 4. Run again with `apply-and-destroy`. Check both outcomes in the summary and
    confirm the bucket is absent from the compartment.
 
-### Terraform Orchestrator
+### Terraform OCI LZ Orchestrator
 
 1. Set the additional `OCI_TENANCY` repository secret.
-2. Open **Actions → Demo Terraform Orchestrator RPST Bucket → Run workflow**.
+2. Open **Actions → Demo Terraform OCI LZ Orchestrator RPST Bucket → Run workflow**.
 3. Select the branch and `plan`. The workflow fetches the official Orchestrator
    commit, fills its bucket inputs, and checks that the plan creates exactly one
    private bucket. No other configuration family is enabled.
