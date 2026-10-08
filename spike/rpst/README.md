@@ -9,7 +9,7 @@ Phase 2 performs a raw curl exchange to check the OCI configuration. Phase 3 let
 | `plan` | Runs both phases and plans one bucket. Creates no OCI resources. |
 | `apply-and-destroy` | Applies the saved plan and attempts to destroy the bucket afterward, including after a failed apply. |
 
-The workflow uses Terraform **1.16.5** and locks `oracle/oci` **9.8.0**, with hashes for `linux_amd64` and `darwin_arm64`. The question this demo must answer is whether the provider can use the issued RPST, including its tenancy claim.
+The workflow uses Terraform **1.16.5** and locks `oracle/oci` **9.8.0**, with hashes for `linux_amd64` and `darwin_arm64`. The [8 October 2026 run](https://github.com/dgutierrezcolodra/oci-terraform-github-actions-wif-example/actions/runs/37760577325) passed the raw exchange, plan, apply, and destroy. The issued RPST contained `tenant`; Terraform created one bucket and deleted it.
 
 On `spike/rpst-terraform`, a push changing this workflow or `spike/rpst/main.tf` runs `apply-and-destroy` automatically. This branch-scoped trigger makes the demo executable without changing `main`. It uses the same steps as the manual action. Documentation-only pushes do not run the demo.
 
@@ -173,7 +173,7 @@ Once the workflow is available on the executing repository's default branch:
 
 1. Open **Actions → Spike RPST Terraform → Run workflow**.
 2. Select the branch containing the demo, choose **`plan`**, and run it.
-3. Review **Phase 2 - raw RPST exchange**. Expect a 2xx status, sorted claim names, selected claim values, and `lifetime_seconds`. Payload inspection is not signature verification. Check whether `tenant` exists; the provider's tenancy handling is the main open question.
+3. Review **Phase 2 - raw RPST exchange**. Expect a 2xx status, sorted claim names, selected claim values, and `lifetime_seconds`. Payload inspection is not signature verification. Check whether `tenant` exists; it was present in the successful reference run.
 4. Review **Terraform Plan**. Expect one private bucket named `rpst-spike-<run_id>` and the namespace output.
 5. Run again with **`apply-and-destroy`**, then check both outcomes in the job summary and confirm that the bucket is absent from the test compartment.
 6. Record the results below.
@@ -228,7 +228,11 @@ The following configuration was created for this branch. The bootstrap created n
 | IAM policy | `rpst-spike-terraform`, tenancy root, restricted to the reference repository and `dgcTesting` |
 | GitHub secrets | Five `RPST_*` secrets created; existing secrets preserved |
 
-The domain, application settings, zero role grants, and trust were read back to verify setup. This does not prove RPST issuance or Terraform authentication. The pre-existing `OCI_REGION` value cannot be read back from GitHub. The workflow remains branch-only; Phase 2, plan, apply, and destroy have not been run.
+The domain, application settings, zero role grants, and trust were read back to verify setup. The [reference execution](https://github.com/dgutierrezcolodra/oci-terraform-github-actions-wif-example/actions/runs/37760577325) then verified RPST issuance and provider-native Terraform authentication: HTTP 200, a successful plan, one bucket created, and one bucket destroyed. An administrator's independent bucket-list query confirmed that `rpst-spike-37760577325` was absent afterward.
+
+The RPST included both `tenant` and `res_tenant`. Its `ttype` was `res_sp`, and its `res_type` was `identityfederateddomainapp`. The propagated claim names were `var_ext_repository` and `var_ext_workflow_ref`. Its lifetime was 1,200 seconds (20 minutes); neither exchange requests `rpst_exp`, so this run does not demonstrate a 12-hour session.
+
+The existing `OCI_REGION` secret was preserved, and the successful bucket run used the configured region. All changes and executions belong to `spike/rpst-terraform`; `main` and the repository's default branch were not changed, and no PR was opened. This result covers the simple bucket demo with the versions above.
 
 ## Results
 
@@ -236,4 +240,4 @@ Fill this table after each run. Record claim names and permitted diagnostic valu
 
 | Date | Provider version | Phase 2 | Plan | Apply | Destroy | RPST lifetime (s) | Claims observed | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| | | | | | | | | |
+| 2026-10-08 | 9.8.0 | Success, HTTP 200 | Success | Success, 1 bucket created | Success, 1 bucket deleted | 1200 | `aud`, `exp`, `iat`, `iss`, `jti`, `jwk`, `opc-dgs`, `ptype`, `res_compartment`, `res_id`, `res_tenant`, `res_type`, `resource_sub_type`, `sub`, `svc`, `svcTenantId`, `tenant`, `ttype`, `var_domain.id`, `var_ext_repository`, `var_ext_workflow_ref`, `var_name` | [Run 37760577325](https://github.com/dgutierrezcolodra/oci-terraform-github-actions-wif-example/actions/runs/37760577325); Terraform 1.16.5; bucket absence checked in OCI. |

@@ -12,6 +12,10 @@ Identity Federation (WIF). It does not use an OCI user API key.
   `spike/rpst-terraform` creates and deletes one private bucket using native
   Terraform WIF with an RPST.
 
+The simple RPST demo [passed on 8 October 2026](https://github.com/dgutierrezcolodra/oci-terraform-github-actions-wif-example/actions/runs/37760577325)
+with Terraform 1.16.5 and OCI provider 9.8.0: raw exchange, plan, one bucket
+created, and the bucket deleted. Its runbook includes the setup and observed claims.
+
 Read [SETUP.md](./SETUP.md) first. It explains the OCI trust, IAM policy, and
 GitHub secrets needed by both examples.
 
