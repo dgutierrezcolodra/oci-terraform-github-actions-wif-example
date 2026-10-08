@@ -18,7 +18,7 @@ Ansible exchanges the GitHub OIDC token and uses the OCI collection's
 
 Start with the [setup runbook](./SETUP.md). It covers the Identity Domain,
 OAuth application, Resource trust, policies, repository secrets, execution,
-troubleshooting, and cleanup. This is a demo for customers to copy and adapt.
+and troubleshooting. This is a demo for customers to copy and adapt.
 
 ## Authentication flow
 
