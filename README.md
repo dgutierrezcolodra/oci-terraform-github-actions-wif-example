@@ -58,13 +58,13 @@ are disabled.
 ## Execution evidence
 
 Both workflows completed RPST exchange, creation, deletion, and runtime cleanup
-on 8 October 2026. An independent OCI bucket-list query confirmed that neither
+from `main` on 8 October 2026. An independent OCI bucket-list query confirmed that neither
 bucket remained.
 
 | Demo | Versions | Execution |
 | --- | --- | --- |
-| Terraform | Terraform 1.16.5 / OCI provider 9.8.0 | [Successful run](https://github.com/dgutierrezcolodra/oci-terraform-github-actions-wif-example/actions/runs/37763451246) |
-| Ansible | Core 2.15.13 / OCI Python SDK 2.182.1 / OCI collection 5.5.0 | [Successful run](https://github.com/dgutierrezcolodra/oci-terraform-github-actions-wif-example/actions/runs/37763343547) |
+| Terraform | Terraform 1.16.5 / OCI provider 9.8.0 | [Successful run](https://github.com/dgutierrezcolodra/oci-terraform-github-actions-wif-example/actions/runs/37766831245) |
+| Ansible | Core 2.15.13 / OCI Python SDK 2.182.1 / OCI collection 5.5.0 | [Successful run](https://github.com/dgutierrezcolodra/oci-terraform-github-actions-wif-example/actions/runs/37766766106) |
 
 ## License
 

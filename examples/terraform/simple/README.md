@@ -35,3 +35,10 @@ terraform -chdir=examples/terraform/simple validate
 
 These commands need no OCI credentials. The Actions workflow initializes with
 `-lockfile=readonly`.
+
+## Execution
+
+On 8 October 2026, both [plan](https://github.com/dgutierrezcolodra/oci-terraform-github-actions-wif-example/actions/runs/37766762428)
+and [apply-and-destroy](https://github.com/dgutierrezcolodra/oci-terraform-github-actions-wif-example/actions/runs/37766831245)
+passed from `main`. Terraform created one bucket and deleted it; an independent
+OCI query confirmed its absence.

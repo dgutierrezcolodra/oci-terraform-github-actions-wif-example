@@ -48,3 +48,11 @@ Syntax checking does not call OCI. Do not use verbose Ansible output or HTTP
 debug logging when running with credentials. These short workflows request
 fresh credentials before bucket operations; they do not run a background
 refresh process for long playbooks.
+
+## Execution
+
+The [8 October 2026 execution](https://github.com/dgutierrezcolodra/oci-terraform-github-actions-wif-example/actions/runs/37766766106)
+passed from `main`: RPST exchange, bucket creation, deletion, and runtime cleanup.
+An independent OCI query confirmed bucket absence. This record covers the short
+bucket workflow; it does not establish support for playbooks longer than the
+issued RPST lifetime.
