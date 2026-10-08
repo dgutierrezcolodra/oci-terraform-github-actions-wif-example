@@ -12,9 +12,8 @@ Open **Actions → Demo Terraform RPST Bucket → Run workflow**.
 2. Select `apply-and-destroy` to create the bucket and delete it afterward.
 3. Check the raw exchange, plan, apply, and destroy outcomes in the job summary.
 
-GitHub requires the workflow on the default branch for manual dispatch. The
-runbook also describes the restricted push trigger used on this reference's
-working branch.
+GitHub requires the workflow on the repository's default branch for manual
+dispatch.
 
 The workflow uses Terraform **1.16.5** and OCI provider **9.8.0**. The committed
 lock contains checksums for Linux AMD64 and macOS ARM64. The provider generates

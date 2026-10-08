@@ -1,14 +1,6 @@
 name: Demo Ansible RPST Bucket
 
 on:
-  push:
-    branches:
-      - spike/rpst-terraform
-    paths:
-      - .github/workflows/demo-ansible-bucket.yml
-      - .github/actions/ansible-oci-wif/**
-      - examples/ansible/bucket/**
-      - examples/ansible/requirements.yml
   workflow_dispatch:
 
 jobs:

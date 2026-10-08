@@ -1,12 +1,6 @@
 name: Demo Terraform RPST Bucket
 
 on:
-  push:
-    branches:
-      - spike/rpst-terraform
-    paths:
-      - .github/workflows/demo-terraform-simple.yml
-      - examples/terraform/simple/main.tf
   workflow_dispatch:
     inputs:
       action:
@@ -26,7 +20,7 @@ jobs:
       contents: read
     env:
       TF_IN_AUTOMATION: "true"
-      DEMO_ACTION: ${{ inputs.action || 'apply-and-destroy' }}
+      DEMO_ACTION: ${{ inputs.action }}
 
     steps:
       - name: Checkout repository

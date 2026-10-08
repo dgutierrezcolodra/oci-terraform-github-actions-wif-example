@@ -145,6 +145,67 @@ trust exists. If the session expires, authenticate again with the same profile.
 Any administrator OAuth client used for setup must be separate from the runtime
 client; its credentials do not belong in the repository secrets.
 
+### Verify the application and trust
+
+After creation, verify the stored configuration rather than relying only on
+wizard completion. Keep the administrator session active and the profile and
+domain environment variables above. Set the two display names you created:
+
+```bash
+export RPST_APPLICATION_NAME=github-rpst-client
+export RPST_TRUST_NAME=github-rpst-trust
+python3 - <<'PYVERIFY'
+import json
+import os
+import subprocess
+import sys
+from urllib.parse import urlencode
+
+base = os.environ["RPST_DOMAIN_URL"].rstrip("/")
+profile = os.environ["RPST_BOOTSTRAP_PROFILE"]
+
+def read(resource, filter_text):
+    uri = base + "/admin/v1/" + resource + "?" + urlencode({"filter": filter_text})
+    result = subprocess.run(
+        ["oci", "raw-request", "--profile", profile, "--auth", "security_token",
+         "--http-method", "GET", "--target-uri", uri],
+        capture_output=True, text=True,
+    )
+    if result.returncode:
+        sys.exit("Administrative read failed; check session and permissions. Response suppressed.")
+    response = json.loads(result.stdout)
+    if not response["status"].startswith("2"):
+        sys.exit("Administrative read returned non-2xx; response suppressed.")
+    return response["data"]
+
+apps = read("Apps", "displayName eq " + json.dumps(os.environ["RPST_APPLICATION_NAME"]))
+trusts = read("IdentityPropagationTrusts", "name eq " + json.dumps(os.environ["RPST_TRUST_NAME"]))
+if apps["totalResults"] != 1 or trusts["totalResults"] != 1:
+    sys.exit("Expected exactly one application and one trust with these names")
+app, trust = apps["Resources"][0], trusts["Resources"][0]
+grants = read("Grants", "grantee.value eq " + json.dumps(app["id"]))
+checks = {
+    "app_active": app["active"] is True,
+    "confidential_client": app["clientType"] == "confidential" and app["isOAuthClient"] is True,
+    "client_credentials_only": app["allowedGrants"] == ["client_credentials"],
+    "no_admin_roles": grants["totalResults"] == 0,
+    "active_resource_trust": trust["active"] is True and trust["subjectType"] == "Resource",
+    "jwt_type": trust["type"] == "JWT",
+    "issuer": trust["issuer"] == "https://token.actions.githubusercontent.com",
+    "jwks": trust["publicKeyEndpoint"] == "https://token.actions.githubusercontent.com/.well-known/jwks",
+    "impersonation": trust["allowImpersonation"] is True and trust["impersonatingResource"] == "github_terraform",
+    "claim_propagations": trust["claimPropagations"] == ["ext_repository", "ext_workflow_ref"],
+    "client_binding": trust["oauthClients"] == [app["name"]],
+}
+print(json.dumps(checks, sort_keys=True))
+if not all(checks.values()):
+    sys.exit("Correct the failed settings before running the workflows")
+PYVERIFY
+```
+
+All checks must be `true`. This verification reads the app, trust, and role
+grants without printing the client ID, client secret, or full responses.
+
 ## 5. Create IAM policies
 
 In **Identity & Security → Policies**, select the tenancy root and create a
@@ -159,6 +220,23 @@ The first statement grants namespace access in the tenancy. The second grants
 bucket access only in the named compartment. For this repository, the value is
 `dgutierrezcolodra/oci-terraform-github-actions-wif-example`.
 Allow time for IAM propagation. Token issuance alone does not grant bucket access.
+
+Read back the domain and policy with the administrator profile. Copy their
+OCIDs from the Console details pages and replace the placeholders:
+
+```bash
+oci iam domain get --domain-id '<domain_ocid>' --profile rpst-admin --auth security_token \
+  --query 'data.{name:"display-name",state:"lifecycle-state",url:url,region:"home-region",compartment:"compartment-id"}'
+oci iam policy get --policy-id '<policy_ocid>' --profile rpst-admin --auth security_token \
+  --query 'data.{name:name,state:"lifecycle-state",compartment:"compartment-id",statements:statements}'
+```
+
+Confirm the domain is `ACTIVE`, the region and compartment are the ones you
+selected, and the policy is `ACTIVE` in the tenancy root with exactly the two
+statements above, using your repository and bucket compartment. The application,
+trust, zero role grants, domain, and policy checks were performed against the
+OCI configuration used by this reference.
+
 
 ## 6. Set GitHub repository secrets
 
@@ -200,14 +278,6 @@ dispatch. In a customer repository, place the reference files on that branch.
 2. Select the branch and run. It exchanges credentials, reads the namespace,
    creates a private bucket, obtains fresh credentials, and deletes the bucket.
 3. Check create and delete outcomes in the summary and confirm bucket absence.
-
-### Reference branch execution
-
-On `spike/rpst-terraform`, restricted push triggers allow execution without
-changing `main`. Changes to the Terraform workflow or `main.tf` run
-`apply-and-destroy`. Changes to the Ansible workflow, credential action,
-playbook, or requirements run the Ansible bucket demo. Documentation changes
-alone do not start either workflow. Bucket names include the unique run ID.
 
 ## 8. Diagnose failures
 
@@ -262,4 +332,5 @@ credentials.
 
 | Date | Demo | Tool / provider version | Exchange | Create / apply | Delete / destroy | RPST lifetime (s) | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 2026-10-08 | Terraform | Terraform 1.16.5 / OCI 9.8.0 | HTTP 200 | 1 bucket created | 1 bucket deleted | 1200 | [Execution](https://github.com/dgutierrezcolodra/oci-terraform-github-actions-wif-example/actions/runs/37760577325); `tenant`, `res_tenant`, `var_ext_repository`, `var_ext_workflow_ref` present; bucket absence confirmed in OCI. |
+| 2026-10-08 | Terraform | Terraform 1.16.5 / OCI 9.8.0 | HTTP 200 | 1 bucket created | 1 bucket deleted | 1200 | [Execution](https://github.com/dgutierrezcolodra/oci-terraform-github-actions-wif-example/actions/runs/37763451246); `tenant`, `res_tenant`, `var_ext_repository`, `var_ext_workflow_ref` present; bucket absence confirmed in OCI. |
+| 2026-10-08 | Ansible | Core 2.15.13 / OCI SDK 2.182.1 / collection 5.5.0 | Success | 1 bucket created | 1 bucket deleted | Not logged | [Execution](https://github.com/dgutierrezcolodra/oci-terraform-github-actions-wif-example/actions/runs/37763343547); resource principal authentication; bucket absence confirmed in OCI. |

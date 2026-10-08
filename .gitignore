@@ -44,5 +44,5 @@ Thumbs.db
 __pycache__/
 *.pyc
 
-# Keep local verification tests out of the repository
+# Local verification
 tests/

@@ -7,8 +7,7 @@ run. Follow the [setup runbook](../../../SETUP.md) first.
 
 Open **Actions → Demo Ansible RPST Bucket → Run workflow**, select the branch,
 and run it. Review the RPST exchange, create, and delete outcomes in the job
-summary. GitHub requires the workflow on the default branch for manual dispatch;
-the runbook describes the restricted push trigger for this reference branch.
+summary. GitHub requires the workflow on the default branch for manual dispatch.
 
 The workflow obtains a GitHub OIDC token and calls the local credential action.
 That action generates an RSA key, exchanges the JWT for an RPST, and writes the

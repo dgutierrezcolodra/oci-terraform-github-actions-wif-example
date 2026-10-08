@@ -37,11 +37,12 @@ sequenceDiagram
     Domain-->>Runtime: RPST with propagated repository claims
     alt Terraform
         Runtime->>OCI: Provider signs requests with its RPST and key
+        OCI-->>Runtime: Bucket created / deleted
     else Ansible
         Runtime-->>Job: Protected RPST and key paths
         Job->>OCI: OCI collection signs with resource_principal
+        OCI-->>Job: Bucket created / deleted
     end
-    OCI-->>Job: Create / delete private bucket
     Job->>Job: Remove temporary credentials and runtime files
 ```
 
@@ -56,9 +57,14 @@ are disabled.
 
 ## Execution evidence
 
-Terraform 1.16.5 with OCI provider 9.8.0 completed token exchange, plan, creation,
-and deletion of one bucket on 8 October 2026.
-[Execution](https://github.com/dgutierrezcolodra/oci-terraform-github-actions-wif-example/actions/runs/37760577325).
+Both workflows completed RPST exchange, creation, deletion, and runtime cleanup
+on 8 October 2026. An independent OCI bucket-list query confirmed that neither
+bucket remained.
+
+| Demo | Versions | Execution |
+| --- | --- | --- |
+| Terraform | Terraform 1.16.5 / OCI provider 9.8.0 | [Successful run](https://github.com/dgutierrezcolodra/oci-terraform-github-actions-wif-example/actions/runs/37763451246) |
+| Ansible | Core 2.15.13 / OCI Python SDK 2.182.1 / OCI collection 5.5.0 | [Successful run](https://github.com/dgutierrezcolodra/oci-terraform-github-actions-wif-example/actions/runs/37763343547) |
 
 ## License
 
