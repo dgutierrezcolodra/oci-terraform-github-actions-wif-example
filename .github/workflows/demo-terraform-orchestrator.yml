@@ -1,12 +1,6 @@
 name: Demo Terraform Orchestrator RPST Bucket
 
 on:
-  push:
-    branches:
-      - spike/rpst-terraform
-    paths:
-      - .github/workflows/demo-terraform-orchestrator.yml
-      - examples/terraform/orchestrator/**
   workflow_dispatch:
     inputs:
       action:
@@ -26,7 +20,7 @@ jobs:
       contents: read
     env:
       TF_IN_AUTOMATION: "true"
-      DEMO_ACTION: ${{ inputs.action || 'apply-and-destroy' }}
+      DEMO_ACTION: ${{ inputs.action }}
       ORCHESTRATOR_COMMIT: 4faa47489242abe056fb5ceb0288c51e29522902 # main / v2.1.4
 
     steps:

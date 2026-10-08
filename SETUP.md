@@ -1,8 +1,8 @@
 # RPST reference implementation runbook
 
 This runbook configures OCI Workload Identity Federation for GitHub Actions
-with ephemeral resource principal session tokens. Both demos create one private
-Object Storage bucket and delete it in the same run. Terraform uses native
+with ephemeral resource principal session tokens. Each demo creates one private
+Object Storage bucket and deletes it in the same run. Terraform uses native
 provider WIF; Ansible uses the OCI collection's resource principal authentication.
 
 ## 1. Prerequisites
@@ -73,7 +73,7 @@ Use these fields:
 | `schemas` | `["urn:ietf:params:scim:schemas:oracle:idcs:IdentityPropagationTrust"]` |
 
 The resource type is a free string. `impersonatingResource`, the exchange's
-`res_type`, and `RPST_RESOURCE_TYPE` must match. Both demos can use this same
+`res_type`, and `RPST_RESOURCE_TYPE` must match. All demos can use this same
 trust and client. Two claims are propagated here; OCI allows up to three.
 The RPST payload exposes them as `var_ext_repository` and `var_ext_workflow_ref`;
 IAM conditions use `request.principal.ext_repository`.
@@ -241,7 +241,7 @@ OCI configuration used by this reference.
 ## 6. Set GitHub repository secrets
 
 Open **Settings → Secrets and variables → Actions → New repository secret**.
-Both workflows use the same six secrets:
+All workflows use the same six secrets:
 
 | Secret | Value |
 | --- | --- |
@@ -251,6 +251,9 @@ Both workflows use the same six secrets:
 | `RPST_RESOURCE_TYPE` | `github_terraform`, matching the trust |
 | `RPST_COMPARTMENT_ID` | Bucket compartment OCID |
 | `OCI_REGION` | Bucket region; use the domain's home region |
+
+The Orchestrator demo also needs `OCI_TENANCY`, containing your tenancy OCID.
+This supplies the upstream `tenancy_ocid` input; it is not an API credential.
 
 Enter credentials directly in the secrets UI or transfer them through a tool's
 standard input. Never put secrets, JWTs, RPSTs, or private keys into commands,
@@ -262,7 +265,7 @@ GitHub requires the workflow file on the repository's default branch for manual
 dispatch. In a customer repository, place the reference files on that branch.
 [GitHub manual workflow requirements](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow).
 
-### Terraform
+### Terraform simple
 
 1. Open **Actions → Demo Terraform RPST Bucket → Run workflow**.
 2. Select the branch and `plan`. The raw exchange checks OCI configuration;
@@ -271,6 +274,19 @@ dispatch. In a customer repository, place the reference files on that branch.
    for one private bucket. Payload inspection does not verify its signature.
 4. Run again with `apply-and-destroy`. Check both outcomes in the summary and
    confirm the bucket is absent from the compartment.
+
+### Terraform Orchestrator
+
+1. Set the additional `OCI_TENANCY` repository secret.
+2. Open **Actions → Demo Terraform Orchestrator RPST Bucket → Run workflow**.
+3. Select the branch and `plan`. The workflow fetches the official Orchestrator
+   commit, fills its bucket inputs, and checks that the plan creates exactly one
+   private bucket. No other configuration family is enabled.
+4. Run again with `apply-and-destroy`. Check plan, apply, and destroy in the
+   summary and confirm bucket absence in OCI.
+
+The [Orchestrator instructions](./examples/terraform/orchestrator/README.md)
+describe the selected upstream commit and input format.
 
 ### Ansible
 
@@ -284,7 +300,7 @@ dispatch. In a customer repository, place the reference files on that branch.
 | Observation | What to check |
 | --- | --- |
 | Manual dispatch unavailable | The workflow must exist on the default branch. |
-| Input validation fails | All six secrets must exist in the executing repository. |
+| Input validation fails | All six shared secrets must exist; Orchestrator also needs `OCI_TENANCY`. |
 | Raw exchange or Ansible exchange fails | Domain URL, active client, credentials, trust issuer uniqueness, JWKS endpoint, and matching `res_type`. |
 | Raw exchange passes; Terraform authentication fails | Provider or SDK RPST handling; check the `tenant` claim. |
 | Exchange passes; Object Storage access denied | IAM propagation, both policies, repository claim, compartment, and region. |
@@ -292,16 +308,17 @@ dispatch. In a customer repository, place the reference files on that branch.
 | Delete or destroy fails after creation | Find the run's bucket in the compartment and remove it manually. |
 
 The raw Terraform exchange uses `continue-on-error`; inspect its result and
-Terraform's result separately. The workflow prints only HTTP status, permitted
+Terraform's result separately. The raw exchange prints only HTTP status, permitted
 error fields, claim names, selected diagnostic claims, and token lifetime.
-Neither workflow requests `rpst_exp`. Observe the issued lifetime; the recorded
+The workflows do not request `rpst_exp`. Observe the issued lifetime; the recorded
 Terraform execution received 1,200 seconds. These short demos obtain fresh
 credentials before operations and do not require a background refresh process.
 
 ## 9. Runtime cleanup and teardown
 
 All credential files stay under `$RUNNER_TEMP`: the source JWT in `oci-wif`,
-Terraform data, plan, and local state in `rpst-terraform`, and Ansible RPST and
+simple Terraform data, plan, and local state in `rpst-terraform`, Orchestrator
+source, inputs, data, plan, and local state in `rpst-orchestrator`, and Ansible RPST and
 key in `oci-ansible-wif`. Sensitive files use mode 600 and directories mode 700.
 Dependency executables retain their required executable permissions.
 
@@ -311,15 +328,18 @@ files. Client secrets are step-level environment values and never written to
 `GITHUB_ENV` or a file. Keep `TF_LOG`, shell tracing, Ansible verbosity, and HTTP
 debugging disabled. Do not upload credentials, state, or plans as artifacts.
 
-Terraform's local backend receives an explicit runtime state path. Cleanup
+Simple Terraform's local backend receives an explicit runtime state path;
+Orchestrator uses its local backend inside the temporary checkout. Cleanup
 removes state even when destroy fails; another run cannot recover it. Use the
-bucket name `rpst-terraform-<run_id>` or `rpst-ansible-<run_id>` for manual cleanup.
+bucket name `rpst-terraform-<run_id>`, `rpst-orchestrator-<run_id>`, or
+`rpst-ansible-<run_id>` for manual cleanup.
 
 When retiring the reference:
 
 1. Confirm all demo buckets are gone. Remove objects before deleting a nonempty
    bucket.
-2. Remove the five `RPST_*` secrets; keep `OCI_REGION` if other consumers need it.
+2. Remove the five `RPST_*` secrets; keep `OCI_REGION` and `OCI_TENANCY` if other
+   consumers need them.
 3. Deactivate and delete the runtime application and trust.
 4. Delete only the IAM policy created for this reference.
 5. Remove the dedicated domain when no longer needed, following Console
@@ -333,4 +353,5 @@ credentials.
 | Date | Demo | Tool / provider version | Exchange | Create / apply | Delete / destroy | RPST lifetime (s) | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-10-08 | Terraform | Terraform 1.16.5 / OCI 9.8.0 | HTTP 200 | 1 bucket created | 1 bucket deleted | 1200 | [Execution](https://github.com/dgutierrezcolodra/oci-terraform-github-actions-wif-example/actions/runs/37766831245); Executed from `main`; [plan](https://github.com/dgutierrezcolodra/oci-terraform-github-actions-wif-example/actions/runs/37766762428) also passed; `tenant` present; bucket absence confirmed in OCI. |
+| 2026-10-08 | Terraform Orchestrator | Orchestrator v2.1.4 / Terraform 1.16.5 / OCI 9.8.0 | Native WIF succeeded | 1 bucket created | 1 bucket deleted | Not logged | [Execution](https://github.com/dgutierrezcolodra/oci-terraform-github-actions-wif-example/actions/runs/37769008078); plan confirmed exactly one private bucket; the same two IAM policies were sufficient; bucket absence confirmed in OCI. |
 | 2026-10-08 | Ansible | Core 2.15.13 / OCI SDK 2.182.1 / collection 5.5.0 | Success | 1 bucket created | 1 bucket deleted | Not logged | [Execution](https://github.com/dgutierrezcolodra/oci-terraform-github-actions-wif-example/actions/runs/37766766106); Executed from `main`; resource principal authentication; bucket absence confirmed in OCI. |

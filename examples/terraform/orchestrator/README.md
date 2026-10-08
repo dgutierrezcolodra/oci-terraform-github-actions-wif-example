@@ -47,3 +47,11 @@ The bucket is named `rpst-orchestrator-<run_id>`. Source, inputs, provider data,
 plan, and local state stay under `$RUNNER_TEMP/rpst-orchestrator` and are removed
 after the run. If destroy fails, delete the named bucket manually; state is not
 retained for another run.
+
+## Execution
+
+On 8 October 2026, [plan, apply, and destroy](https://github.com/dgutierrezcolodra/oci-terraform-github-actions-wif-example/actions/runs/37769008078)
+passed with native WIF and the runbook's two IAM policies. The plan check
+confirmed exactly one private bucket; Terraform created it and deleted it.
+An independent OCI query confirmed its absence. Init, validate, and runtime
+cleanup also passed.
